@@ -2,7 +2,7 @@
 
 Esta guía no requiere comprar un dominio, contratar un servidor ni configurar funciones de pago. Usa **un solo proyecto Supabase Free para los seis eventos** y **un sitio Netlify Free**. Revisa las cuotas y condiciones vigentes en los paneles de ambos proveedores y selecciona explícitamente los planes gratuitos.
 
-El código está preparado y probado localmente. Todavía no hay un proyecto Supabase ni un sitio Netlify conectado: deben crearse en tus cuentas. Ningún archivo contiene tus credenciales reales y no se han publicado datos.
+El código está preparado, probado localmente y publicado en `danielopzs/GameJamHub`, rama `main`. Para activar la PWA, crea o selecciona el proyecto Supabase y el sitio Netlify en tus cuentas y configura sus accesos. Ningún archivo contiene credenciales reales ni datos de participantes.
 
 ## Camino sencillo: paquete listo, sin instalar Node
 
@@ -95,7 +95,7 @@ Estas verificaciones remotas quedan pendientes hasta crear y configurar los serv
 
 ## Alternativa: despliegue desde GitHub con actualizaciones automáticas
 
-1. Sube el código fuente actualizado a tu repositorio GitHub.
+1. Usa el repositorio `danielopzs/GameJamHub`, rama `main`, que ya contiene el código actualizado.
 2. En Netlify importa ese repositorio. `netlify.toml` define `npm run build:cloud`, publicación de `dist` y Node 24.
 3. Antes del despliegue agrega estas variables para el build:
 
