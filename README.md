@@ -4,6 +4,8 @@ PWA en español para coordinar hasta seis eventos, sus comités, participantes y
 
 ## Publicar y conectar
 
+Para instrucciones detalladas desde cero, abre [la guía paso a paso de Supabase y Netlify](GUIA_PASO_A_PASO_SUPABASE_NETLIFY.md). Incluye comprobaciones SQL, autenticación sin depender del correo, configuración por Git, validación de jueceo y resolución de errores.
+
 Sigue [DEPLOY_SUPABASE.md](DEPLOY_SUPABASE.md). Incluye instrucciones desde cero para crear ambos proyectos, ejecutar la migración SQL, configurar la URL/clave pública y publicar la carpeta compilada sin instalar Node. También explica la configuración del correo, las cuentas de jueces y la prueba final en dos navegadores.
 
 El código está publicado en `danielopzs/GameJamHub`, rama `main`, con la configuración de build de Netlify incluida. La conexión real a Supabase y la publicación de la PWA requieren configurar el proyecto, el sitio y los accesos correspondientes; no se deben confundir con las pruebas locales.

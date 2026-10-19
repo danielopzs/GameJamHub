@@ -1,5 +1,7 @@
 # Activar Game Jam Manager con Supabase + Netlify Free
 
+La versión ampliada con instrucciones detalladas de cada panel está en [GUIA_PASO_A_PASO_SUPABASE_NETLIFY.md](GUIA_PASO_A_PASO_SUPABASE_NETLIFY.md).
+
 Esta guía no requiere comprar un dominio, contratar un servidor ni configurar funciones de pago. Usa **un solo proyecto Supabase Free para los seis eventos** y **un sitio Netlify Free**. Revisa las cuotas y condiciones vigentes en los paneles de ambos proveedores y selecciona explícitamente los planes gratuitos.
 
 El código está preparado, probado localmente y publicado en `danielopzs/GameJamHub`, rama `main`. Para activar la PWA, crea o selecciona el proyecto Supabase y el sitio Netlify en tus cuentas y configura sus accesos. Ningún archivo contiene credenciales reales ni datos de participantes.
