@@ -128,6 +128,14 @@ Para apagar: **Ctrl+C** en la terminal de la app, **Ctrl+C** en la del túnel y 
 
 ## Validar cambios de código
 
+Para liberar un usuario o correo de pruebas, detén la aplicación y ejecuta en la máquina que guarda la base:
+
+```bash
+npm run user:delete -- danielopzs
+```
+
+Puedes usar el correo completo en lugar del usuario. El comando exige una única coincidencia, crea primero un respaldo SQLite en `.data/backups/` (o dentro de `DATA_DIR`) e invalida las sesiones y accesos de esa cuenta. Conserva los eventos y permite registrar nuevamente a su organizador buscando el mismo nombre y edición. Si la cuenta ya entregó evaluaciones, conserva su autor histórico con credenciales desactivadas y libera el usuario y correo originales. No borra evaluaciones ni participantes. Este comando solo actúa en SQLite local, no en Supabase.
+
 ```bash
 npm test
 npm run test:ui:local

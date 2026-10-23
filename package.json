@@ -15,6 +15,7 @@
     "dev:cloud": "vite --host 0.0.0.0 --mode cloud",
     "test:ui": "playwright test",
     "test:ui:local": "playwright test --config playwright.local.config.ts",
+    "user:delete": "node --env-file-if-exists=.env scripts/delete-local-user.mjs",
     "test:db": "bash scripts/test-supabase.sh"
   },
   "dependencies": {
