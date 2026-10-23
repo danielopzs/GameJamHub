@@ -14,6 +14,7 @@ import {
 import { resolve, extname, sep } from "node:path";
 import webpush from "web-push";
 import { dueReminders } from "./schedule.mjs";
+import { createLocalJams } from "./local-jams.mjs";
 const dataDir = resolve(process.env.DATA_DIR || ".data");
 mkdirSync(dataDir, { recursive: true });
 const db = new DatabaseSync(resolve(dataDir, "gamejam.sqlite"));
@@ -31,17 +32,14 @@ webpush.setVapidDetails(
   keys.publicKey,
   keys.privateKey,
 );
-const allowedKeys = new Set([
-  "gj-tasks",
-  "gj-members",
-  "gj-event",
-  "gj-host",
-  "gj-hosts",
-  "gj-teams",
-  "gj-judges",
-  "gj-evaluations",
-  "gj-weight",
-]);
+const localJams = createLocalJams(db);
+if (
+  !db
+    .prepare("PRAGMA table_info(subscriptions)")
+    .all()
+    .some((column) => column.name === "jam_id")
+)
+  db.exec("ALTER TABLE subscriptions ADD COLUMN jam_id TEXT");
 const root = resolve("dist");
 const port = Number(process.env.PORT || 3001);
 const types = {
@@ -90,7 +88,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
     if (path.startsWith("/api/")) {
-      // Use behind authentication at the reverse proxy for a private/shared deployment.
+      // Mutating browser requests must originate from this workspace.
       if (
         req.headers.origin &&
         new URL(req.headers.origin).host !== req.headers.host
@@ -98,6 +96,11 @@ const server = http.createServer(async (req, res) => {
         return reply(res, 403, { error: "Cross-origin request refused" });
       if (path === "/api/health")
         return reply(res, 200, { ok: true, storage: "sqlite" });
+      if (await localJams.handle(req, res, path, body, reply)) return;
+      if (path.startsWith("/api/push/") && !localJams.session(req))
+        return reply(res, 401, {
+          error: "Inicia sesión para configurar recordatorios.",
+        });
       if (path === "/api/push/key" && req.method === "GET")
         return reply(res, 200, { publicKey: keys.publicKey });
       if (path === "/api/push/subscribe" && req.method === "POST") {
@@ -118,40 +121,22 @@ const server = http.createServer(async (req, res) => {
           return reply(res, 400, {
             error: "Invalid browser push subscription",
           });
-        db.prepare("INSERT OR REPLACE INTO subscriptions VALUES (?,?,?)").run(
+        db.prepare(
+          "INSERT OR REPLACE INTO subscriptions(endpoint,payload,role,jam_id) VALUES (?,?,?,?)",
+        ).run(
           subscription.endpoint,
           JSON.stringify(subscription),
           String(role),
+          localJams.session(req).jam_id,
         );
         return reply(res, 200, { ok: true });
       }
       if (path === "/api/push/unsubscribe" && req.method === "POST") {
         const { endpoint } = await body(req);
-        db.prepare("DELETE FROM subscriptions WHERE endpoint=?").run(
-          String(endpoint),
-        );
+        db.prepare(
+          "DELETE FROM subscriptions WHERE endpoint=? AND jam_id=?",
+        ).run(String(endpoint), localJams.session(req).jam_id);
         return reply(res, 200, { ok: true });
-      }
-      if (path.startsWith("/api/state/")) {
-        const key = decodeURIComponent(path.slice("/api/state/".length));
-        if (!allowedKeys.has(key))
-          return reply(res, 404, { error: "Unknown key" });
-        if (req.method === "GET") {
-          const row = db
-            .prepare("SELECT value FROM state WHERE key=?")
-            .get(key);
-          return reply(res, 200, { value: row ? JSON.parse(row.value) : null });
-        }
-        if (req.method === "PUT") {
-          const { value } = await body(req);
-          if (value === undefined)
-            return reply(res, 400, { error: "Missing value" });
-          db.prepare("INSERT OR REPLACE INTO state VALUES (?,?)").run(
-            key,
-            JSON.stringify(value),
-          );
-          return reply(res, 200, { ok: true });
-        }
       }
       return reply(res, 404, { error: "Not found" });
     }
@@ -182,36 +167,39 @@ async function tick() {
   if (running) return;
   running = true;
   try {
-    const row = db
-      .prepare("SELECT value FROM state WHERE key='gj-event'")
-      .get();
-    if (!row) return;
-    const event = JSON.parse(row.value);
-    for (const reminder of dueReminders(event.start)) {
-      for (const sub of db.prepare("SELECT * FROM subscriptions").all()) {
-        if (sub.role !== "Todos" && sub.role !== reminder.role) continue;
-        const id = `${event.start}:${reminder.index}:${sub.endpoint}`;
-        if (db.prepare("SELECT id FROM sent WHERE id=?").get(id)) continue;
-        try {
-          await webpush.sendNotification(
-            JSON.parse(sub.payload),
-            JSON.stringify({
-              title: `Game Jam · ${reminder.role}`,
-              body: reminder.text,
-            }),
-            { TTL: 3600 },
-          );
-          db.prepare("INSERT OR IGNORE INTO sent VALUES (?)").run(id);
-        } catch (error) {
-          if ([404, 410].includes(error.statusCode))
-            db.prepare("DELETE FROM subscriptions WHERE endpoint=?").run(
-              sub.endpoint,
+    const events = db
+      .prepare("SELECT jam_id,value FROM local_jam_state WHERE key='gj-event'")
+      .all();
+    for (const row of events) {
+      const event = JSON.parse(row.value);
+      for (const reminder of dueReminders(event.start)) {
+        for (const sub of db
+          .prepare("SELECT * FROM subscriptions WHERE jam_id=?")
+          .all(row.jam_id)) {
+          if (sub.role !== "Todos" && sub.role !== reminder.role) continue;
+          const id = `${row.jam_id}:${event.start}:${reminder.index}:${sub.endpoint}`;
+          if (db.prepare("SELECT id FROM sent WHERE id=?").get(id)) continue;
+          try {
+            await webpush.sendNotification(
+              JSON.parse(sub.payload),
+              JSON.stringify({
+                title: `${event.name} · ${reminder.role}`,
+                body: reminder.text,
+              }),
+              { TTL: 3600 },
             );
-          else
-            console.error(
-              "Push delivery failed:",
-              error.statusCode || error.message,
-            );
+            db.prepare("INSERT OR IGNORE INTO sent VALUES (?)").run(id);
+          } catch (error) {
+            if ([404, 410].includes(error.statusCode))
+              db.prepare("DELETE FROM subscriptions WHERE endpoint=?").run(
+                sub.endpoint,
+              );
+            else
+              console.error(
+                "Push delivery failed:",
+                error.statusCode || error.message,
+              );
+          }
         }
       }
     }

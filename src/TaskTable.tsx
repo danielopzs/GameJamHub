@@ -1,6 +1,7 @@
 import { Check, MoreHorizontal } from "lucide-react";
 import { phases, type Task } from "./data";
 import { Avatar } from "./Avatar";
+import { jamDate, taskDate } from "./local/dates";
 const priorities = ["Crítica", "Alta", "Media", "Baja"];
 export function TaskTable({
   items,
@@ -69,9 +70,7 @@ export function TaskTable({
                 </span>
               </td>
               <td className="muted">
-                {new Date(
-                  new Date(eventStart).getTime() + t.day * 86400000,
-                ).toLocaleDateString("es-MX", {
+                {jamDate(taskDate(eventStart, t.day), {
                   day: "2-digit",
                   month: "short",
                 })}

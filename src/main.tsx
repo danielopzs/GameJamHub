@@ -38,6 +38,10 @@ import { Avatar } from "./Avatar";
 import { TaskTable } from "./TaskTable";
 import { Dialog } from "./Dialog";
 import { STATIC_MODE } from "./runtime";
+import { LocalRoot } from "./local/LocalRoot";
+import { useLocalEvent } from "./local/store";
+import { EventOverview } from "./local/EventOverview";
+import { jamDate, taskDate } from "./local/dates";
 import { CloudRoot } from "./cloud/CloudRoot";
 import { useCloud } from "./cloud/store";
 import { Participants } from "./cloud/Participants";
@@ -68,6 +72,7 @@ const initialMembers = [
   },
 ];
 function App() {
+  const local = useLocalEvent();
   const cloud = useCloud();
   const [page, setPage] = useState(
     cloud && !cloud.organizer ? "Evaluación y premios" : "Resumen",
@@ -131,7 +136,7 @@ function App() {
     "gj-evaluations",
     {},
   );
-  const [judge, setJudge] = useState(cloud?.actor || judges[0]);
+  const [judge, setJudge] = useState(cloud?.actor || judges[0] || "");
   const [team, setTeam] = useState(teams[0]?.code || "T01");
   const [scores, setScores] = useState<number[]>(criteria.map(() => 0));
   const [weight, setWeight] = useLocal("gj-weight", 85);
@@ -158,7 +163,7 @@ function App() {
       if (Notification.permission !== "granted") return;
       reminders.forEach((r, i) => {
         const when = new Date(event.start).getTime() + r.day * 86400000;
-        const key = `gj-sent-${event.start}-${i}`;
+        const key = `gj-sent-${local?.jam.id || cloud?.event.id || "demo"}-${event.start}-${i}`;
         if (
           Date.now() >= when &&
           Date.now() - when < 86400000 &&
@@ -178,7 +183,7 @@ function App() {
     check();
     const timer = setInterval(check, 30000);
     return () => clearInterval(timer);
-  }, [event.start]);
+  }, [event.start, local?.jam.id, cloud?.event.id]);
   useEffect(() => {
     setScores(evaluations[`${judge}:${team}`] || criteria.map(() => 0));
   }, [judge, team, evaluations]);
@@ -186,6 +191,9 @@ function App() {
     if (!teams.some((t) => t.code === team)) setTeam(teams[0]?.code || "");
   }, [teams, team]);
   const completed = tasks.filter((t) => t.status === "Completada").length;
+  const activePhase = tasks
+    .filter((t) => t.status !== "Completada")
+    .reduce((phase, t) => Math.min(phase, t.phase), 5);
   const progress = Math.round((completed / Math.max(1, tasks.length)) * 100);
   const filtered = tasks.filter(
     (t) =>
@@ -277,7 +285,7 @@ function App() {
             [Users, "Comité organizador"],
             [Trophy, "Evaluación y premios"],
             [Bell, "Recordatorios"],
-            ...(cloud?.organizer ? [[Users, "Participantes"]] : []),
+            ...(cloud?.organizer || local ? [[Users, "Participantes"]] : []),
           ]
             .filter(
               ([, label]) =>
@@ -304,12 +312,12 @@ function App() {
         <div className="sidebar-event">
           <span className="live-dot" /> PRÓXIMO EVENTO<h4>{event.name}</h4>
           <p>
-            {new Date(event.start).toLocaleDateString("es-MX", {
+            {jamDate(event.start, {
               day: "numeric",
               month: "short",
             })}{" "}
             –{" "}
-            {new Date(event.end).toLocaleDateString("es-MX", {
+            {jamDate(event.end, {
               day: "numeric",
               month: "short",
               year: "numeric",
@@ -365,7 +373,17 @@ function App() {
           <div className="top-actions">
             <span className="saved">
               <i />
-              {online ? "Guardado en este dispositivo" : "Modo sin conexión"}
+              {!online
+                ? "Modo sin conexión"
+                : local
+                  ? local.error
+                    ? "Revisar sincronización"
+                    : local.pending
+                      ? "Cambios pendientes"
+                      : local.busy
+                        ? "Sincronizando…"
+                        : "Guardado en el servidor local"
+                  : "Guardado en este dispositivo"}
             </span>
             <button
               className="icon-button"
@@ -455,7 +473,11 @@ function App() {
                     <span>
                       <i /> EN PREPARACIÓN
                     </span>
-                    <span>EDICIÓN 2026</span>
+                    <span>
+                      {event.start
+                        ? `EDICIÓN ${new Date(event.start).getFullYear()}`
+                        : "FECHAS POR DEFINIR"}
+                    </span>
                   </div>
                   <h2>
                     {event.name}
@@ -464,12 +486,12 @@ function App() {
                   <div className="hero-meta">
                     <span>
                       <CalendarDays size={15} />
-                      {new Date(event.start).toLocaleDateString("es-MX", {
+                      {jamDate(event.start, {
                         day: "numeric",
                         month: "short",
                       })}{" "}
                       –{" "}
-                      {new Date(event.end).toLocaleDateString("es-MX", {
+                      {jamDate(event.end, {
                         day: "numeric",
                         month: "short",
                         year: "numeric",
@@ -516,6 +538,12 @@ function App() {
                   </span>
                 </div>
               </section>
+              <EventOverview
+                tasks={tasks}
+                start={event.start}
+                onTasks={() => navigate("Tareas")}
+                onDates={() => setModal("event")}
+              />
               <section className="stats">
                 <div className="stat-card">
                   <span className="stat-icon purple">
@@ -632,7 +660,7 @@ function App() {
                       return (
                         <button
                           key={p}
-                          className={`phase ${i === 0 ? "phase-done" : i === 1 ? "phase-active" : ""}`}
+                          className={`phase ${total.length && done === total.length ? "phase-done" : i === activePhase ? "phase-active" : ""}`}
                           onClick={() => {
                             navigate("Tareas");
                             setQuery("");
@@ -640,7 +668,7 @@ function App() {
                           }}
                         >
                           <span className="phase-circle">
-                            {i === 0 ? (
+                            {total.length > 0 && done === total.length ? (
                               <Check size={17} />
                             ) : (
                               String(i + 1).padStart(2, "0")
@@ -669,7 +697,7 @@ function App() {
                   <div className="phase-footer">
                     <span>
                       <span className="live-dot" /> Estás en la fase de{" "}
-                      <strong>Producción</strong>
+                      <strong>{phases[activePhase].split(" · ")[0]}</strong>
                     </span>
                     <button
                       className="text-button"
@@ -709,9 +737,7 @@ function App() {
                   <div className="between">
                     <span className="reminder-date">
                       <CalendarDays size={14} />{" "}
-                      {new Date(
-                        new Date(event.start).getTime() - 30 * 86400000,
-                      ).toLocaleDateString("es-MX", {
+                      {jamDate(taskDate(event.start, -30), {
                         day: "numeric",
                         month: "short",
                         year: "numeric",
@@ -735,11 +761,11 @@ function App() {
                 <div>
                   <h3>
                     {page === "Resumen"
-                      ? "Tu foco, esta semana"
+                      ? "Tareas de la fase actual"
                       : "Checklist operativo"}
                     <span className="count-chip">
                       {page === "Resumen"
-                        ? tasks.filter((t) => t.phase === 1).length
+                        ? tasks.filter((t) => t.phase === activePhase).length
                         : tasks.length}
                     </span>
                   </h3>
@@ -811,7 +837,7 @@ function App() {
                   onEdit={(id) => setModal(`edit:${id}`)}
                   items={
                     page === "Resumen"
-                      ? filtered.filter((t) => t.phase === 1)
+                      ? filtered.filter((t) => t.phase === activePhase)
                       : filtered
                   }
                 />
@@ -1134,7 +1160,9 @@ function App() {
                     <button
                       className="button primary"
                       disabled={
-                        !!cloud && (!cloud.canEvaluate || !teams.length)
+                        !judge ||
+                        !teams.length ||
+                        (!!cloud && !cloud.canEvaluate)
                       }
                       onClick={() => {
                         setEvaluations({
@@ -1261,12 +1289,17 @@ function App() {
                     </small>
                     <h4>{r.text}</h4>
                     <p>
-                      {new Date(
-                        new Date(event.start).getTime() + r.day * 86400000,
-                      ).toLocaleString("es-MX")}
+                      {jamDate(taskDate(event.start, r.day), {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </p>
                   </div>
-                  <span className="subtle-chip">Programado</span>
+                  <span className="subtle-chip">
+                    {event.start ? "Programado" : "Sin fecha"}
+                  </span>
                 </div>
               ))}
               <PushControls notify={notify} />
@@ -1304,7 +1337,9 @@ function App() {
               </button>
             </section>
           )}
-          {page === "Participantes" && cloud?.organizer && <Participants />}
+          {page === "Participantes" && (cloud?.organizer || local) && (
+            <Participants />
+          )}
           {page === "Configuración" && (
             <section className="panel settings-panel">
               <h3>Tu espacio de organización</h3>
@@ -1361,7 +1396,9 @@ function App() {
                             evaluations,
                             weight,
                             participants:
-                              cloud?.snapshot.data["gj-participants"] || [],
+                              cloud?.snapshot.data["gj-participants"] ||
+                              local?.data["gj-participants"] ||
+                              [],
                             access: cloud?.members || [],
                           },
                           null,
@@ -1763,6 +1800,8 @@ function App() {
 
 createRoot(document.getElementById("root")!).render(
   <CloudRoot>
-    <App />
+    <LocalRoot>
+      <App />
+    </LocalRoot>
   </CloudRoot>,
 );

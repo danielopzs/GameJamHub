@@ -14,6 +14,7 @@
     "build:cloud": "node scripts/check-public-config.mjs && tsc -b && vite build --mode cloud && node scripts/build-sw.mjs",
     "dev:cloud": "vite --host 0.0.0.0 --mode cloud",
     "test:ui": "playwright test",
+    "test:ui:local": "playwright test --config playwright.local.config.ts",
     "test:db": "bash scripts/test-supabase.sh"
   },
   "dependencies": {

@@ -1,9 +1,11 @@
 import { useCloud, useCloudValue } from "./cloud/store";
+import { useLocalEvent, useLocalValue } from "./local/store";
 import { STATIC_MODE } from "./runtime";
 import { useEffect, useState, type SetStateAction } from "react";
 /** Local-first state: pending writes survive offline sessions; reconnect flushes them to SQLite. */
 function useLegacyLocal<T>(key: string, initial: T) {
   const cloud = useCloud();
+  const event = useLocalEvent();
   const [value, setValue] = useState<T>(() => {
     try {
       return JSON.parse(localStorage.getItem(key) || "null") ?? initial;
@@ -12,11 +14,15 @@ function useLegacyLocal<T>(key: string, initial: T) {
     }
   });
   useEffect(() => {
-    if (!cloud && localStorage.getItem(key) === null)
+    if (
+      !cloud &&
+      (!event || key === "gj-dark") &&
+      localStorage.getItem(key) === null
+    )
       localStorage.setItem(key, JSON.stringify(initial));
   }, [key]);
   useEffect(() => {
-    if (cloud || key === "gj-dark" || STATIC_MODE) return;
+    if (cloud || event || key === "gj-dark" || STATIC_MODE) return;
     let disposed = false,
       busy = false;
     const sync = async () => {
@@ -92,7 +98,9 @@ function useLegacyLocal<T>(key: string, initial: T) {
 
 export function useLocal<T>(key: string, initial: T) {
   const cloud = useCloud();
+  const event = useLocalEvent();
   const local = useLegacyLocal(key, initial);
   const remote = useCloudValue(key, initial);
-  return cloud && key !== "gj-dark" ? remote : local;
+  const scoped = useLocalValue(key, initial);
+  return key === "gj-dark" ? local : cloud ? remote : event ? scoped : local;
 }

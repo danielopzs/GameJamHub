@@ -9,6 +9,7 @@ WORKDIR /app
 ENV NODE_ENV=production PORT=3001 DATA_DIR=/data
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
+COPY --from=build /app/shared ./shared
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 RUN mkdir /data && chown node:node /data

@@ -12,6 +12,8 @@ El código está publicado en `danielopzs/GameJamHub`, rama `main`, con la confi
 
 ## Desarrollo
 
+Para la iteración actual en Raspberry Pi, utiliza **`npm run dev -- --port 5174 --strictPort`**. El modo local incorpora entrada por nombre del jam, organizador con contraseña/PIN sin verificar correo, cuestionario presencial/virtual y datos separados por evento en SQLite. Sigue [DESARROLLO_LOCAL.md](DESARROLLO_LOCAL.md) para actualizar `main`, respaldar datos, conectar por SSH y probar el recorrido. La variante cloud descrita a continuación conserva su acceso con Supabase.
+
 Node.js 22.13+ (recomendado 24):
 
 ```sh

@@ -1,0 +1,219 @@
+[
+  {
+    "id": 0,
+    "title": "Conformar comité organizador",
+    "phase": 0,
+    "priority": 2,
+    "day": -60
+  },
+  {
+    "id": 1,
+    "title": "Reservar y confirmar el venue",
+    "phase": 0,
+    "priority": 0,
+    "day": -60
+  },
+  {
+    "id": 2,
+    "title": "Definir presupuesto y recursos",
+    "phase": 0,
+    "priority": 2,
+    "day": -60
+  },
+  {
+    "id": 3,
+    "title": "Contactar patrocinadores",
+    "phase": 0,
+    "priority": 1,
+    "day": -60
+  },
+  {
+    "id": 4,
+    "title": "Diseñar identidad del evento",
+    "phase": 0,
+    "priority": 2,
+    "day": -60
+  },
+  {
+    "id": 10,
+    "title": "Confirmar acceso al venue 24/7",
+    "phase": 1,
+    "priority": 0,
+    "day": -30
+  },
+  {
+    "id": 11,
+    "title": "Verificar red de 20+ Mbps",
+    "phase": 1,
+    "priority": 0,
+    "day": -30
+  },
+  {
+    "id": 12,
+    "title": "Contratar ambulancia para más de 100 personas",
+    "phase": 1,
+    "priority": 0,
+    "day": -30
+  },
+  {
+    "id": 13,
+    "title": "Invitar y confirmar jueces",
+    "phase": 1,
+    "priority": 1,
+    "day": -30
+  },
+  {
+    "id": 14,
+    "title": "Gestionar pases VIP y booths",
+    "phase": 1,
+    "priority": 1,
+    "day": -30
+  },
+  {
+    "id": 15,
+    "title": "Convocar mentores técnicos",
+    "phase": 1,
+    "priority": 2,
+    "day": -30
+  },
+  {
+    "id": 20,
+    "title": "Publicar póster oficial",
+    "phase": 2,
+    "priority": 2,
+    "day": -14
+  },
+  {
+    "id": 21,
+    "title": "Enviar boletín de prensa",
+    "phase": 2,
+    "priority": 2,
+    "day": -14
+  },
+  {
+    "id": 22,
+    "title": "Producir reels de difusión",
+    "phase": 2,
+    "priority": 2,
+    "day": -14
+  },
+  {
+    "id": 23,
+    "title": "Abrir registro de participantes",
+    "phase": 2,
+    "priority": 2,
+    "day": -14
+  },
+  {
+    "id": 24,
+    "title": "Definir premios y goodies",
+    "phase": 2,
+    "priority": 2,
+    "day": -14
+  },
+  {
+    "id": 30,
+    "title": "Confirmar catering e insumos para 150 personas",
+    "phase": 3,
+    "priority": 1,
+    "day": -7
+  },
+  {
+    "id": 31,
+    "title": "Asignar turnos de registro",
+    "phase": 3,
+    "priority": 2,
+    "day": -7
+  },
+  {
+    "id": 32,
+    "title": "Verificar OBS y overlays",
+    "phase": 3,
+    "priority": 2,
+    "day": -7
+  },
+  {
+    "id": 33,
+    "title": "Configurar canales de Discord",
+    "phase": 3,
+    "priority": 2,
+    "day": -7
+  },
+  {
+    "id": 34,
+    "title": "Preparar agenda de pitching",
+    "phase": 3,
+    "priority": 1,
+    "day": -7
+  },
+  {
+    "id": 40,
+    "title": "Revelar la temática",
+    "phase": 4,
+    "priority": 0,
+    "day": 0
+  },
+  {
+    "id": 41,
+    "title": "Coordinar mentorías",
+    "phase": 4,
+    "priority": 2,
+    "day": 0
+  },
+  {
+    "id": 42,
+    "title": "Organizar torneo de Smash",
+    "phase": 4,
+    "priority": 3,
+    "day": 0
+  },
+  {
+    "id": 43,
+    "title": "Organizar karaoke",
+    "phase": 4,
+    "priority": 3,
+    "day": 0
+  },
+  {
+    "id": 44,
+    "title": "Fotografiar y entrevistar equipos",
+    "phase": 4,
+    "priority": 2,
+    "day": 0
+  },
+  {
+    "id": 45,
+    "title": "Recordar subida de juegos a Itch.io",
+    "phase": 4,
+    "priority": 0,
+    "day": 0
+  },
+  {
+    "id": 46,
+    "title": "Coordinar presentaciones y jueceo",
+    "phase": 4,
+    "priority": 2,
+    "day": 0
+  },
+  {
+    "id": 50,
+    "title": "Publicar resultados y entregar premios",
+    "phase": 5,
+    "priority": 2,
+    "day": 3
+  },
+  {
+    "id": 51,
+    "title": "Enviar agradecimientos a patrocinadores",
+    "phase": 5,
+    "priority": 1,
+    "day": 3
+  },
+  {
+    "id": 52,
+    "title": "Realizar retrospectiva del comité",
+    "phase": 5,
+    "priority": 2,
+    "day": 3
+  }
+]
