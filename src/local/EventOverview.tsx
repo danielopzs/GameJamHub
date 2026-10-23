@@ -1,3 +1,4 @@
+import { eventSize, validJoinUrl } from "../../shared/event-profile.mjs";
 import { taskTimestamp } from "../../shared/planning.mjs";
 import {
   ArrowRight,
@@ -33,6 +34,7 @@ export function EventOverview({
     end?: string;
     planningStart?: string;
     platform?: string;
+    joinUrl?: string;
   };
   const answers = {
     ...captured,
@@ -72,6 +74,10 @@ export function EventOverview({
             <Users size={18} />
             <small>Participantes esperados</small>
             <strong>{answers.participants ?? "Por confirmar"}</strong>
+            <small>
+              Tamaño previsto: {eventSize(answers.participants)} · sin
+              organizadores
+            </small>
           </span>
           <span>
             <Users size={18} />
@@ -86,6 +92,26 @@ export function EventOverview({
             </strong>
           </span>
         </div>
+        {(event.mode === "Virtual" || event.mode === "Híbrido") &&
+          (validJoinUrl(event.joinUrl) ? (
+            <p>
+              <a
+                className="button secondary"
+                href={event.joinUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Sumarse al evento ↗
+              </a>
+            </p>
+          ) : (
+            <p className="jam-advice">
+              Falta el enlace de acceso de esta edición.{" "}
+              <button className="text-button" onClick={onDates}>
+                Agregar enlace
+              </button>
+            </p>
+          ))}
         {answers.framework && (
           <p>
             En el marco de <strong>{answers.frameworkName}</strong>

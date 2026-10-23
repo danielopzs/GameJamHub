@@ -5,6 +5,7 @@ import {
   scrypt as scryptCallback,
 } from "node:crypto";
 import { promisify } from "node:util";
+import { memberRoles } from "../shared/event-profile.mjs";
 import { eventReminders } from "../shared/planning.mjs";
 const scrypt = promisify(scryptCallback),
   hash = (v) => createHash("sha256").update(v).digest("hex");
@@ -47,6 +48,8 @@ export function createLocalPortals({
         mode: e.mode,
         venue: e.venue,
         platform: e.platform,
+        joinUrl:
+          e.mode === "Virtual" || e.mode === "Híbrido" ? e.joinUrl || "" : "",
         frameworkName: e.frameworkName,
         registrationOpen: !!e.registrationOpen,
       },
@@ -117,6 +120,7 @@ export function createLocalPortals({
           ? getValue(id, "gj-members", []).map((m) => ({
               name: m.name,
               role: m.role,
+              roles: memberRoles(m),
             }))
           : [],
       scorecards: db

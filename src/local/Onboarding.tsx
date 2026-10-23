@@ -10,6 +10,12 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
+import {
+  eventSize,
+  validJoinUrl,
+  memberRoles,
+} from "../../shared/event-profile.mjs";
+import { RolePicker } from "../RolePicker";
 import { roles } from "../data";
 import {
   localApi,
@@ -96,8 +102,8 @@ export function Onboarding({
       answers.mode === "Virtual"
         ? `¿Ya tienes una infraestructura en ${answers.platform || "la plataforma"}?`
         : answers.mode === "Híbrido"
-          ? `¿La sede y ${answers.platform || "la plataforma"} están listas para ${answers.participants || "tus"} participantes?`
-          : `¿El espacio tiene la infraestructura para recibir a ${answers.participants || "esa cantidad de"} participantes?`,
+          ? `¿La sede y ${answers.platform || "la plataforma"} están listas para ${answers.participants ?? "tus"} participantes?`
+          : `¿El espacio tiene la infraestructura para recibir a ${answers.participants ?? "esa cantidad de"} participantes?`,
     partner: "¿Tienes algún socio clave?",
     civil: "¿Te apoya algún grupo o sociedad civil?",
     student: "¿Te apoya algún grupo o asociación estudiantil?",
@@ -118,18 +124,19 @@ export function Onboarding({
         Date.parse(answers.planningStart || "") <=
           Date.parse(answers.start || "")
       );
-    if (field === "venue" || field === "platform")
-      return !!answers[field]?.trim();
+    if (field === "venue") return !!answers.venue?.trim();
+    if (field === "platform")
+      return !!answers.platform?.trim() && validJoinUrl(answers.joinUrl);
     if (field === "participants" || field === "teamSize")
       return (
         Number.isInteger(answers[field]) &&
-        Number(answers[field]) > 0 &&
+        Number(answers[field]) >= (field === "participants" ? 0 : 1) &&
         (field !== "teamSize" ||
           !knownTeam ||
           (!!answers.crew?.length &&
             answers.crew.length < Number(answers.teamSize) &&
             answers.crew.every(
-              (m) => m.name.trim() && m.email.trim() && m.role,
+              (m) => m.name.trim() && m.email.trim() && memberRoles(m).length,
             )))
       );
     if (field === "university")
@@ -355,7 +362,7 @@ export function Onboarding({
                   key={field}
                   autoFocus
                   type="number"
-                  min={1}
+                  min={field === "participants" ? 0 : 1}
                   max={field === "teamSize" ? 10 : 100}
                   step={1}
                   required
@@ -386,6 +393,37 @@ export function Onboarding({
                     {answers[booleanField] === answer && <Check size={17} />}
                   </button>
                 ))}
+              </div>
+            )}
+            {field === "platform" && (
+              <label className="jam-answer-label">
+                Enlace para sumarse al evento
+                <input
+                  type="url"
+                  required
+                  maxLength={2048}
+                  value={answers.joinUrl || ""}
+                  onChange={(e) => update("joinUrl", e.target.value)}
+                  placeholder="https://discord.gg/tu-evento"
+                />
+                <small>
+                  Comparte el enlace de invitación, reunión o sala que usarán
+                  los participantes.
+                </small>
+              </label>
+            )}
+            {field === "participants" && (
+              <div className="event-size-info" role="status">
+                <strong>
+                  Tamaño del evento: {eventSize(answers.participants)}
+                </strong>
+                <p>
+                  Pequeño: 0–15 · Mediano: 16–50 · Grande: 51 o más
+                  participantes.
+                </p>
+                <small>
+                  Solo cuenta participantes; no incluye organizadores.
+                </small>
               </div>
             )}
             {field === "university" && answers.university && (
@@ -484,24 +522,21 @@ export function Onboarding({
                             }
                           />
                         </label>
-                        <label>
-                          Rol del integrante
-                          <select
-                            value={member.role}
-                            onChange={(e) =>
-                              update(
-                                "crew",
-                                answers.crew!.map((m, j) =>
-                                  j === i ? { ...m, role: e.target.value } : m,
-                                ),
-                              )
-                            }
-                          >
-                            {roles.map((role) => (
-                              <option key={role}>{role}</option>
-                            ))}
-                          </select>
-                        </label>
+                        <RolePicker
+                          label={`Roles del integrante ${i + 1}`}
+                          expanded
+                          value={memberRoles(member)}
+                          onChange={(selected) =>
+                            update(
+                              "crew",
+                              answers.crew!.map((m, j) =>
+                                j === i
+                                  ? { ...m, role: selected[0], roles: selected }
+                                  : m,
+                              ),
+                            )
+                          }
+                        />
                         <button
                           type="button"
                           className="text-button"
@@ -535,6 +570,7 @@ export function Onboarding({
                             name: "",
                             email: "",
                             role: roles[1],
+                            roles: [roles[1]],
                             color: "blue",
                           },
                         ])

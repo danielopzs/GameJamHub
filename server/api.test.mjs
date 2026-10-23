@@ -50,6 +50,7 @@ test("SQLite API persists records after restart and enforces request boundaries"
       mode: "Virtual",
       framework: false,
       platform: "Discord",
+      joinUrl: "https://discord.gg/gamejam-test",
       participants: 100,
       infrastructure: true,
       partner: false,

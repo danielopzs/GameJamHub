@@ -55,6 +55,7 @@ const physical = {
 const virtual = {
   mode: "Virtual",
   platform: "Discord",
+  joinUrl: "https://discord.gg/gamejam-test",
   framework: false,
   participants: 40,
   infrastructure: true,
@@ -413,6 +414,7 @@ test("recurring editions have distinct identities, hybrid dates and crew survive
       ...physical,
       mode: "Híbrido",
       platform: "Discord",
+      joinUrl: "https://discord.gg/gamejam-test",
       start: "2027-05-01T10:00:00Z",
       end: "2027-05-03T10:00:00Z",
       planningStart: "2027-04-20T10:00:00Z",
@@ -621,7 +623,16 @@ test("public enrollment enforces capacity, isolates tickets and allows organizer
       path = `jams/${jam.id}`;
     await r(
       path + "/onboarding",
-      { answers: {...virtual,start:"2027-05-01T10:00:00Z",end:"2027-05-03T10:00:00Z",planningStart:"2027-04-20T10:00:00Z"}, revision: 0, complete: true },
+      {
+        answers: {
+          ...virtual,
+          start: "2027-05-01T10:00:00Z",
+          end: "2027-05-03T10:00:00Z",
+          planningStart: "2027-04-20T10:00:00Z",
+        },
+        revision: 0,
+        complete: true,
+      },
       cookie,
       "PUT",
     );
@@ -779,6 +790,147 @@ test("committee access can distribute tasks without changing event settings or e
         )
       ).status,
       403,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("virtual and hybrid events require a joining link, accept zero participants and retain multiple crew roles", async () => {
+  const { db, request: r } = fixture();
+  try {
+    const { jam, cookie } = await r("register", credentials),
+      path = `jams/${jam.id}`;
+    const roles = [
+      "Director de Logística & Venue",
+      "Director de Marketing & Prensa",
+    ];
+    const answers = {
+      ...virtual,
+      participants: 0,
+      start: "2027-05-01T10:00:00Z",
+      end: "2027-05-03T10:00:00Z",
+      planningStart: "2027-04-20T10:00:00Z",
+      crew: [
+        {
+          name: "Luis Torres",
+          email: "luis@example.com",
+          role: roles[0],
+          roles,
+        },
+      ],
+    };
+    assert.equal(
+      (
+        await r(
+          path + "/onboarding",
+          { answers: { ...answers, joinUrl: "" }, revision: 0, complete: true },
+          cookie,
+          "PUT",
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/onboarding",
+          {
+            answers: { ...answers, joinUrl: "javascript:alert(1)" },
+            revision: 0,
+            complete: true,
+          },
+          cookie,
+          "PUT",
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/onboarding",
+          { answers, revision: 0, complete: true },
+          cookie,
+          "PUT",
+        )
+      ).status,
+      200,
+    );
+    let saved = await r(path, null, cookie);
+    assert.equal(saved.jam.answers.participants, 0);
+    assert.equal(
+      saved.state.find((s) => s.key === "gj-event").value.joinUrl,
+      answers.joinUrl,
+    );
+    const members = saved.state.find((s) => s.key === "gj-members");
+    assert.equal(members.value.length, 2);
+    assert.deepEqual(members.value[1].roles, roles);
+    assert.equal(
+      (
+        await r(
+          path + "/onboarding",
+          {
+            answers: {
+              ...answers,
+              crew: [
+                {
+                  ...answers.crew[0],
+                  roles: [...roles, "Director de Imagen & Arte"],
+                },
+              ],
+            },
+            revision: 1,
+            complete: true,
+          },
+          cookie,
+          "PUT",
+        )
+      ).status,
+      200,
+    );
+    saved = await r(path, null, cookie);
+    assert.equal(
+      saved.state.find((s) => s.key === "gj-members").value.length,
+      2,
+    );
+    assert.equal(
+      saved.state.find((s) => s.key === "gj-members").value[1].roles.length,
+      3,
+    );
+    const event = saved.state.find((s) => s.key === "gj-event");
+    assert.equal(
+      (
+        await r(
+          path + "/state/gj-event",
+          {
+            value: { ...event.value, mode: "Híbrido", joinUrl: "" },
+            revision: event.revision,
+          },
+          cookie,
+          "PUT",
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/state/gj-event",
+          {
+            value: { ...event.value, mode: "Presencial" },
+            revision: event.revision,
+          },
+          cookie,
+          "PUT",
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await r(path, null, cookie)).state.find((s) => s.key === "gj-event")
+        .value.joinUrl,
+      "",
     );
   } finally {
     db.close();

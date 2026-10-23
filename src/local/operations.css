@@ -566,3 +566,70 @@
     display: none;
   }
 }
+.role-picker {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: left;
+  min-width: 0;
+  margin: 15px 0;
+}
+.role-picker legend {
+  padding: 0 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.role-picker summary {
+  font-size: 12px;
+  line-height: 1.7;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.role-picker p {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 12px 0;
+}
+.role-checkboxes {
+  display: grid;
+  gap: 12px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 8px 2px;
+}
+.role-checkboxes label {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 9px !important;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: left;
+}
+.role-checkboxes input[type="checkbox"] {
+  flex: none;
+  width: 17px;
+  min-height: 17px;
+  margin-top: 2px;
+}
+.event-size-info {
+  background: var(--subtle);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  margin: 20px 0;
+}
+.event-size-info strong {
+  font-size: 15px;
+}
+.event-size-info p,
+.event-size-info small {
+  display: block;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.event-review a {
+  overflow-wrap: anywhere;
+}

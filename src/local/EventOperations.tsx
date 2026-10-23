@@ -1,3 +1,4 @@
+import { eventSize } from "../../shared/event-profile.mjs";
 import { createId } from "../id";
 import { useEffect, useState } from "react";
 import {
@@ -89,6 +90,14 @@ export function EventMetrics() {
             const rows = [
               ["Evento", local.jam.name],
               ["Edición", local.jam.edition || ""],
+              [
+                "Tamaño previsto (sin organizadores)",
+                eventSize(local.jam.answers.participants),
+              ],
+              [
+                "Tamaño por inscritos (sin organizadores)",
+                eventSize(people.length),
+              ],
               ["Generado", new Date().toISOString()],
               ...facts,
               ["Participantes sin equipo", people.length - assigned],
@@ -131,7 +140,9 @@ export function EventMetrics() {
         ))}
       </div>
       <p>
-        {people.length - assigned} participantes sin equipo ·{" "}
+        Tamaño por inscritos: {eventSize(people.length)} ({people.length}{" "}
+        participantes, sin organizadores). {people.length - assigned}{" "}
+        participantes sin equipo ·{" "}
         {Math.round((present / Math.max(1, people.length)) * 100)}% de
         asistencia · {Math.round((games / Math.max(1, teams.length)) * 100)}% de
         equipos con entrega. Las cifras describen los registros capturados; no

@@ -30,6 +30,8 @@ import {
   ChartNoAxesGantt,
   CheckCircle2,
 } from "lucide-react";
+import { RolePicker, type Member } from "./RolePicker";
+import { memberRoles } from "../shared/event-profile.mjs";
 import { initialTasks, roles, phases, criteria, reminders } from "./data";
 import "./style.css";
 import { useLocal } from "./storage";
@@ -58,7 +60,7 @@ import { jamDate, taskDate, inputDate } from "./local/dates";
 import { CloudRoot } from "./cloud/CloudRoot";
 import { useCloud } from "./cloud/store";
 import { Participants } from "./cloud/Participants";
-const initialMembers = [
+const initialMembers: Member[] = [
   {
     name: "Ana García",
     email: "ana@gamejam.mx",
@@ -99,6 +101,7 @@ function App() {
     planningStart: "",
     platform: "",
     registrationOpen: false,
+    joinUrl: "",
     start: "2026-01-30T17:00",
     end: "2026-02-01T17:00",
     mode: "Presencial",
@@ -120,6 +123,11 @@ function App() {
   const [filter, setFilter] = useState("Todos");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState("");
+  const [newMemberRoles, setNewMemberRoles] = useState<string[]>([roles[0]]);
+  const [editingMode, setEditingMode] = useState(event.mode);
+  useEffect(() => {
+    if (modal === "event") setEditingMode(event.mode);
+  }, [modal, event.mode]);
   const [toast, setToast] = useState("");
   const [notifications, setNotifications] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
@@ -623,7 +631,14 @@ function App() {
                         small
                       />
                     ))}
-                    <button onClick={() => setModal("member")}>+</button>
+                    <button
+                      onClick={() => {
+                        setNewMemberRoles([roles[0]]);
+                        setModal("member");
+                      }}
+                    >
+                      +
+                    </button>
                   </div>
                   <small>Un equipo, una misma visión</small>
                 </div>
@@ -973,7 +988,10 @@ function App() {
                 <span>{members.length} personas · 12 roles de campo</span>
                 <button
                   className="button primary"
-                  onClick={() => setModal("member")}
+                  onClick={() => {
+                    setNewMemberRoles([roles[0]]);
+                    setModal("member");
+                  }}
                 >
                   <Plus size={16} />
                   Agregar miembro
@@ -985,22 +1003,19 @@ function App() {
                     <Avatar name={m.name} color={m.color} />
                     <h3>{m.name}</h3>
                     <p>{m.email}</p>
-                    <select
-                      value={m.role}
-                      onChange={(e) =>
+                    <RolePicker
+                      label={`Roles de ${m.name}`}
+                      value={memberRoles(m)}
+                      onChange={(selected) =>
                         setMembers(
                           members.map((x) =>
                             x.email === m.email
-                              ? { ...x, role: e.target.value }
+                              ? { ...x, role: selected[0], roles: selected }
                               : x,
                           ),
                         )
                       }
-                    >
-                      {roles.map((r) => (
-                        <option key={r}>{r}</option>
-                      ))}
-                    </select>
+                    />
                     <div className="between">
                       <span>
                         {tasks.filter((t) => t.owner === m.name).length} tareas
@@ -1058,8 +1073,10 @@ function App() {
                       </span>
                       <strong>{r}</strong>
                       <small>
-                        {members.find((m) => m.role === r)?.name ||
-                          "Por asignar"}
+                        {members
+                          .filter((m) => memberRoles(m).includes(r))
+                          .map((m) => m.name)
+                          .join(", ") || "Por asignar"}
                       </small>
                     </div>
                   ))}
@@ -1586,7 +1603,10 @@ function App() {
                   ...(local
                     ? {
                         edition: s("edition"),
-                        platform: s("platform"),
+                        platform:
+                          editingMode !== "Presencial" ? s("platform") : "",
+                        joinUrl:
+                          editingMode !== "Presencial" ? s("joinUrl") : "",
                         planningStart: new Date(
                           s("planningStart"),
                         ).toISOString(),
@@ -1625,7 +1645,8 @@ function App() {
                   {
                     name: s("name"),
                     email: s("email"),
-                    role: s("role"),
+                    role: newMemberRoles[0],
+                    roles: newMemberRoles,
                     color: ["purple", "blue", "pink", "orange"][
                       members.length % 4
                     ],
@@ -1707,10 +1728,28 @@ function App() {
                         )}
                       />
                     </label>
-                    <label>
-                      Plataforma virtual
-                      <input name="platform" defaultValue={event.platform} />
-                    </label>
+                    {editingMode !== "Presencial" && (
+                      <>
+                        <label>
+                          Plataforma virtual
+                          <input
+                            name="platform"
+                            required
+                            defaultValue={event.platform}
+                          />
+                        </label>
+                        <label>
+                          Enlace para sumarse al evento
+                          <input
+                            name="joinUrl"
+                            type="url"
+                            maxLength={2048}
+                            required
+                            defaultValue={event.joinUrl}
+                          />
+                        </label>
+                      </>
+                    )}
                   </>
                 )}
                 <div className="form-grid">
@@ -1735,7 +1774,11 @@ function App() {
                 </div>
                 <label>
                   Modalidad
-                  <select name="mode" defaultValue={event.mode}>
+                  <select
+                    name="mode"
+                    value={editingMode}
+                    onChange={(e) => setEditingMode(e.target.value)}
+                  >
                     {["Presencial", "Virtual", "Híbrido"].map((s) => (
                       <option key={s}>{s}</option>
                     ))}
@@ -1801,14 +1844,12 @@ function App() {
                   Correo
                   <input required type="email" name="email" />
                 </label>
-                <label>
-                  Rol
-                  <select name="role">
-                    {roles.map((r) => (
-                      <option key={r}>{r}</option>
-                    ))}
-                  </select>
-                </label>
+                <RolePicker
+                  label="Roles del nuevo integrante"
+                  expanded
+                  value={newMemberRoles}
+                  onChange={setNewMemberRoles}
+                />
               </>
             ) : modal === "judge" ? (
               <label>

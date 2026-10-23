@@ -78,10 +78,24 @@ El primero debe responder `200 OK`; el segundo, `{"ok":true,"storage":"sqlite"}`
 1. La primera pantalla pregunta **«¿En qué jam trabajaremos hoy?»**. Escribe el nombre y la **edición** en campos separados: por ejemplo, `Global Game Jam` y `2027`. Mayúsculas y espacios repetidos no crean eventos distintos. Los eventos de versiones anteriores conservan su nombre y una edición vacía; búscalos así y después separa ambos campos desde Editar evento.
 2. Si no existe, registra nombre, usuario, correo y contraseña de al menos ocho caracteres o PIN numérico de seis a doce dígitos. **No hay cuentas ni contraseñas predeterminadas**. No se envía un correo de verificación.
 3. Si ya tienes cuenta y quieres crear otro jam, pulsa **«Ya tengo cuenta de organizador»**. Un organizador puede crear hasta seis eventos.
-4. Contesta el cuestionario: modalidad **presencial, virtual o híbrida**; inicio y fin del jam; inicio de planeación; sede y/o plataforma; evento marco; participantes; infraestructura; socios; apoyo civil o estudiantil y equipo. El inicio de planeación se propone con la fecha de registro; puedes ajustarlo. Las horas son las de tu navegador y se guardan como instantes UTC. Cada respuesta se guarda al continuar.
-5. Al terminar aparecen los datos capturados y las próximas tareas. Las 31 tareas de un jam nuevo empiezan pendientes; no se copian participantes, equipos ni jueces de demostración. Si ya tienes comité, agrega sus perfiles (nombre, correo y rol) en la última pregunta. Puedes completarlos después en Comité organizador, hasta diez personas incluyendo al organizador.
+4. Contesta el cuestionario: modalidad **presencial, virtual o híbrida**; inicio y fin del jam; inicio de planeación; sede y/o plataforma con enlace de acceso; evento marco; participantes; infraestructura; socios; apoyo civil o estudiantil y equipo. El inicio de planeación se propone con la fecha de registro; puedes ajustarlo. Las horas son las de tu navegador y se guardan como instantes UTC. Cada respuesta se guarda al continuar.
+5. Al terminar aparecen los datos capturados y las próximas tareas. Las 31 tareas de un jam nuevo empiezan pendientes; no se copian participantes, equipos ni jueces de demostración. Si ya tienes comité, agrega sus perfiles (nombre, correo y rol) en la última pregunta. Puedes completarlos después en Comité organizador, hasta diez personas incluyendo al organizador. Cada persona puede tener varios roles de campo: abre su selector de roles y marca todas sus responsabilidades. Sigue contando como una sola persona y mantiene sus tareas asignadas.
 6. El cronograma se genera con esas fechas. En Tareas → Cronograma verás fechas reales, responsables, avance y tareas por fase; puedes desplegar o plegar cada fase. Si hay menos de 60 días disponibles, se comprimen los plazos previos. La entrega se recuerda dos horas antes del cierre real; el jueceo se sitúa al cierre y la retrospectiva después. Puedes cambiar fechas desde Editar evento.
 7. **«Respuestas del evento»** abre un resumen guardado con el botón Volver al dashboard. Para recorrer el cuestionario otra vez, pulsa Editar configuración. Sal del jam y vuelve a buscar su nombre y edición para comprobar el acceso. Si ya terminaste el cuestionario, pasarás directamente al dashboard.
+
+### Tamaño del evento y enlace de acceso
+
+El tamaño se calcula **solo con participantes, sin sumar organizadores**:
+
+| Participantes | Tamaño |
+| --- | --- |
+| 0–15 | Pequeño |
+| 16–50 | Mediano |
+| 51 o más | Grande |
+
+El cuestionario y el resumen muestran el tamaño previsto según los participantes esperados (se acepta cero). Las métricas y su CSV distinguen ese dato del tamaño por inscritos reales. El cupo de inscripción es un ajuste separado y sigue teniendo un máximo de 100 en esta iteración.
+
+En Virtual e Híbrido se pide el nombre de la plataforma y un **enlace HTTP/HTTPS para sumarse**. El enlace aparece en el dashboard, en la página de inscripción y en el comprobante personal. Puedes corregirlo desde Editar evento. Los eventos anteriores conservan sus datos: si les falta el enlace, el dashboard ofrece Agregar enlace. Los miembros que tenían un solo rol lo conservan; puedes sumar otros roles sin volver a registrarlos. Estos roles de campo no modifican los permisos de su cuenta de acceso.
 
 ## 5. Jurado y comité con cuentas propias
 

@@ -1,3 +1,4 @@
+import { validJoinUrl } from "../../shared/event-profile.mjs";
 import { useEffect, useState } from "react";
 import { Gamepad2, LogOut, CheckCircle2 } from "lucide-react";
 import { localApi, type Organizer, type LocalJam } from "./types";
@@ -13,6 +14,7 @@ type PublicEvent = {
   mode: string;
   venue: string;
   platform: string;
+  joinUrl?: string;
   registrationOpen: boolean;
 };
 type Person = {
@@ -32,7 +34,7 @@ type Team = {
 };
 type Portal = {
   tasks: { id: number; title: string; owner: string; status: string }[];
-  members: { name: string; role: string }[];
+  members: { name: string; role: string; roles?: string[] }[];
   event: PublicEvent;
   teams: Team[];
   scorecards: { teamCode: string; scores: number[]; revision: number }[];
@@ -53,7 +55,24 @@ function Header({ event }: { event: PublicEvent }) {
         {jamDate(event.start, { dateStyle: "long", timeStyle: "short" })} ·{" "}
         {event.mode}
       </p>
-      <p>{[event.venue, event.platform].filter(Boolean).join(" · ")}</p>
+      <p>
+        {[...new Set([event.venue, event.platform].filter(Boolean))].join(
+          " · ",
+        )}
+      </p>
+      {(event.mode === "Virtual" || event.mode === "Híbrido") &&
+        validJoinUrl(event.joinUrl) && (
+          <p>
+            <a
+              className="button primary"
+              href={event.joinUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Sumarse al evento ↗
+            </a>
+          </p>
+        )}
     </>
   );
 }

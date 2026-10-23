@@ -5,6 +5,7 @@ import {
   timingSafeEqual,
   createHash,
 } from "node:crypto";
+import { validJoinUrl, memberRoles } from "../shared/event-profile.mjs";
 import { createLocalPortals } from "./local-portals.mjs";
 import { promisify } from "node:util";
 import taskTemplate from "../shared/task-template.json" with { type: "json" };
@@ -49,6 +50,29 @@ function validateJam(name) {
   );
   return value;
 }
+function validatedRoles(member) {
+  if (member.roles !== undefined)
+    requireValue(
+      Array.isArray(member.roles) &&
+        member.roles.length > 0 &&
+        member.roles.length <= 12 &&
+        member.roles.every(
+          (r) =>
+            typeof r === "string" &&
+            r.trim().length > 0 &&
+            r.trim().length <= 120,
+        ),
+      "Selecciona entre uno y doce roles válidos por integrante.",
+    );
+  const selected = memberRoles(member);
+  requireValue(
+    selected.length > 0 &&
+      selected.length <= 12 &&
+      selected.every((r) => r.length <= 120),
+    "Selecciona al menos un rol por integrante.",
+  );
+  return selected;
+}
 function answersFrom(value, complete = false) {
   requireValue(
     value && typeof value === "object" && !Array.isArray(value),
@@ -79,13 +103,20 @@ function answersFrom(value, complete = false) {
     "civil",
   ])
     if (typeof value[key] === "boolean") answers[key] = value[key];
+  if (value.joinUrl !== undefined) {
+    requireValue(
+      typeof value.joinUrl === "string" && value.joinUrl.length <= 2048,
+      "El enlace de acceso admite hasta 2048 caracteres.",
+    );
+    answers.joinUrl = value.joinUrl.trim();
+  }
   for (const key of ["participants", "teamSize"])
     if (value[key] !== "" && value[key] !== undefined) {
       requireValue(
         Number.isInteger(Number(value[key])) &&
-          Number(value[key]) > 0 &&
+          Number(value[key]) >= (key === "participants" ? 0 : 1) &&
           Number(value[key]) <= 10000,
-        "Indica una cantidad entera entre 1 y 10000.",
+        "Indica una cantidad entera: participantes desde 0 y equipo desde 1, hasta 10000.",
       );
       answers[key] = Number(value[key]);
     }
@@ -93,7 +124,15 @@ function answersFrom(value, complete = false) {
     delete answers.venue;
     delete answers.university;
     delete answers.universityRelation;
-  } else if (answers.mode === "Presencial") delete answers.platform;
+  } else if (answers.mode === "Presencial") {
+    delete answers.platform;
+    delete answers.joinUrl;
+  }
+  if (answers.joinUrl)
+    requireValue(
+      validJoinUrl(answers.joinUrl),
+      "Escribe un enlace de acceso HTTP o HTTPS válido.",
+    );
   if (answers.university === false) delete answers.universityRelation;
   if (answers.framework === false) delete answers.frameworkName;
   if (answers.partner === false) delete answers.partnerName;
@@ -109,7 +148,8 @@ function answersFrom(value, complete = false) {
         email = String(member.email || "")
           .trim()
           .toLowerCase(),
-        role = cleanName(member.role);
+        selectedRoles = validatedRoles(member),
+        role = selectedRoles[0];
       requireValue(
         name.length >= 2 &&
           name.length <= 120 &&
@@ -125,6 +165,7 @@ function answersFrom(value, complete = false) {
         name,
         email,
         role,
+        roles: selectedRoles,
         color: ["blue", "purple", "pink", "orange"][emails.size % 4],
       };
     });
@@ -166,8 +207,13 @@ function answersFrom(value, complete = false) {
           "Selecciona la relación con la universidad.",
         );
     }
-    if (answers.mode !== "Presencial")
+    if (answers.mode !== "Presencial") {
       requireValue(!!answers.platform, "Indica la plataforma del evento.");
+      requireValue(
+        validJoinUrl(answers.joinUrl),
+        "Agrega el enlace para sumarse al evento virtual o híbrido.",
+      );
+    }
     if (answers.student)
       requireValue(!!answers.studentName, "Indica la asociación estudiantil.");
     for (const key of ["framework", "infrastructure", "partner", "civil"])
@@ -185,7 +231,7 @@ function answersFrom(value, complete = false) {
     if (answers.civil)
       requireValue(!!answers.civilName, "Indica el grupo o sociedad civil.");
     requireValue(
-      !!answers.participants && !!answers.teamSize,
+      answers.participants !== undefined && !!answers.teamSize,
       "Completa participantes y tamaño del equipo.",
     );
   }
@@ -363,6 +409,7 @@ export function createLocalJams(db) {
         settings.planningStart ||
         jam.created_at.replace(" ", "T") + "Z",
       platform: answers.platform || "",
+      joinUrl: answers.joinUrl || "",
       mode: answers.mode,
       venue: answers.mode === "Virtual" ? answers.platform : answers.venue,
       framework: answers.framework,
@@ -391,6 +438,7 @@ export function createLocalJams(db) {
           name: user.name,
           email: user.email,
           role: "Director General / Líder del Jam",
+          roles: ["Director General / Líder del Jam"],
           color: "purple",
         },
       ],
@@ -412,9 +460,18 @@ export function createLocalJams(db) {
         putValue(jam.id, key, value);
     if (answers.crew?.length) {
       const members = getValue(jam.id, "gj-members", []);
-      for (const member of answers.crew)
-        if (!members.some((m) => m.email.toLowerCase() === member.email))
-          members.push(member);
+      for (const member of answers.crew) {
+        const index = members.findIndex(
+          (m) => m.email.toLowerCase() === member.email,
+        );
+        if (index === -1) members.push(member);
+        else
+          members[index] = {
+            ...members[index],
+            role: member.role,
+            roles: member.roles,
+          };
+      }
       requireValue(members.length <= 10, "El comité admite hasta 10 personas.");
       putValue(jam.id, "gj-members", members);
     }
@@ -443,6 +500,12 @@ export function createLocalJams(db) {
     if (key === "gj-event") {
       validateJam(value.name);
       editionValue(value.edition);
+      if (value.mode === "Virtual" || value.mode === "Híbrido")
+        requireValue(
+          validJoinUrl(value.joinUrl),
+          "Agrega un enlace de acceso HTTP o HTTPS válido.",
+        );
+      else if (value.mode === "Presencial") value.joinUrl = "";
       if (value.start || value.end)
         requireValue(
           Number.isFinite(Date.parse(value.start)) &&
@@ -487,8 +550,14 @@ export function createLocalJams(db) {
             ["critical", "action", "info"].includes(r.level),
           "Revisa destinatario, nivel, fecha y mensaje del recordatorio.",
         );
-    if (key === "gj-members")
+    if (key === "gj-members") {
       requireValue(value.length <= 10, "Máximo 10 integrantes.");
+      for (const member of value) {
+        const selected = validatedRoles(member);
+        member.roles = selected;
+        member.role = selected[0];
+      }
+    }
     if (key === "gj-judges")
       requireValue(value.length <= 5, "Máximo 5 jueces.");
     if (key === "gj-teams")

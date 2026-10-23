@@ -36,6 +36,7 @@ async function register(
   user: string,
   mode: "Presencial" | "Virtual" | "Híbrido",
   crew = false,
+  participantCount = 100,
 ) {
   await lookup(p, name, edition);
   await p.getByLabel("Nombre completo").fill("Organizador " + user);
@@ -72,9 +73,25 @@ async function register(
   await next(p);
   if (mode !== "Presencial") {
     await p.getByLabel("Nombre de la plataforma").fill("Discord");
+    await p
+      .getByLabel("Enlace para sumarse al evento")
+      .fill("https://discord.gg/gamejam-test");
     await next(p);
   }
-  await p.getByLabel("Participantes esperados").fill("100");
+  if (mode === "Virtual")
+    for (const [count, size] of [
+      [0, "Pequeño"],
+      [15, "Pequeño"],
+      [16, "Mediano"],
+      [50, "Mediano"],
+      [51, "Grande"],
+    ] as const) {
+      await p.getByLabel("Participantes esperados").fill(String(count));
+      await expect(p.locator(".event-size-info strong")).toHaveText(
+        "Tamaño del evento: " + size,
+      );
+    }
+  await p.getByLabel("Participantes esperados").fill(String(participantCount));
   if (mode !== "Virtual")
     await expect(p.getByText(/Con más de 90 participantes/)).toBeVisible();
   await next(p);
@@ -101,8 +118,12 @@ async function register(
     await p.getByLabel("Nombre del integrante").fill("Luis Torres");
     await p.getByLabel("Correo del integrante").fill("staff@example.com");
     await p
-      .getByLabel("Rol del integrante")
-      .selectOption("Director de Logística & Venue");
+      .getByRole("group", { name: "Roles del integrante 1" })
+      .getByRole("checkbox", {
+        name: "Director de Marketing & Prensa",
+        exact: true,
+      })
+      .check();
   }
   await p.getByRole("button", { name: "Preparar mi jam" }).click();
   await expect(
@@ -118,9 +139,49 @@ test("hybrid edition: onboarding dates, crew, review without reset, timeline, pr
     "Campus norte · Discord",
   );
   await expect(page.locator(".jam-facts")).toContainText(
+    "Tamaño previsto: Grande",
+  );
+  await expect(
+    page.getByRole("link", { name: "Sumarse al evento ↗" }),
+  ).toHaveAttribute("href", "https://discord.gg/gamejam-test");
+  await expect(page.locator(".jam-facts")).toContainText(
     "Sociedad de videojuegos",
   );
   await expect(page.locator("body")).not.toContainText("Invalid Date");
+  await page
+    .getByRole("button", { name: "Comité organizador", exact: true })
+    .click();
+  const member = page
+    .locator(".member-card")
+    .filter({ hasText: "Luis Torres" });
+  await expect(member.locator("summary")).toContainText("2 roles");
+  await member.locator("summary").click();
+  await member
+    .getByRole("checkbox", { name: "Director de Imagen & Arte", exact: true })
+    .check();
+  await expect(member.locator("summary")).toContainText("3 roles");
+  await expect(page.locator(".member-card")).toHaveCount(2);
+  await waitSaved(page);
+  await page
+    .getByRole("button", { name: "Resumen", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("button", { name: "Editar evento", exact: true })
+    .click();
+  await expect(page.getByLabel("Enlace para sumarse al evento")).toHaveValue(
+    "https://discord.gg/gamejam-test",
+  );
+  await page
+    .getByLabel("Enlace para sumarse al evento")
+    .fill("https://discord.gg/gamejam-updated");
+  await page
+    .getByRole("button", { name: "Guardar cambios", exact: true })
+    .click();
+  await waitSaved(page);
+  await expect(
+    page.getByRole("link", { name: "Sumarse al evento ↗" }),
+  ).toHaveAttribute("href", "https://discord.gg/gamejam-updated");
   await page.getByRole("button", { name: "Respuestas del evento" }).click();
   await expect(
     page.getByRole("heading", { name: "Respuestas del evento" }),
@@ -241,6 +302,9 @@ test("automatic enrollment, ticket, check-in, sponsor metrics and independent ju
     await expect(guest.locator(".ticket-code")).toContainText(
       "Check-in pendiente",
     );
+    await expect(
+      guest.getByRole("link", { name: "Sumarse al evento ↗" }),
+    ).toHaveAttribute("href", "https://discord.gg/gamejam-updated");
     await expect(page.locator(".participants-panel")).toContainText(
       "Participante Uno",
       { timeout: 10000 },
@@ -358,7 +422,19 @@ test("mobile virtual edition keeps separate data and requires the matching editi
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await register(page, "Game Jam móvil", "Primavera", "luis", "Virtual");
+  await register(
+    page,
+    "Game Jam móvil",
+    "Primavera",
+    "luis",
+    "Virtual",
+    false,
+    15,
+  );
+  await expect(page.locator(".jam-facts")).toContainText(
+    "Tamaño previsto: Pequeño",
+  );
+  await expect(page.locator(".jam-facts")).toContainText("10 personas");
   await expect(page.locator(".jam-facts")).toContainText("Discord");
   expect(
     await page.evaluate(

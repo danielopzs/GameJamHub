@@ -1,13 +1,31 @@
+import type { Member } from "../RolePicker";
+import {
+  eventSize,
+  validJoinUrl,
+  memberRoles,
+} from "../../shared/event-profile.mjs";
 import { Gamepad2, ArrowLeft, Settings } from "lucide-react";
 import type { LocalSnapshot, JamAnswers } from "./types";
 import { jamDate, inputDate } from "./dates";
 export function hydratedJam(snapshot: LocalSnapshot) {
   const event = snapshot.state.find((r) => r.key === "gj-event")?.value as
     Record<string, string | boolean> | undefined;
+  const members = snapshot.state.find((r) => r.key === "gj-members")?.value as
+    Member[] | undefined;
   return {
     ...snapshot.jam,
     answers: {
       ...snapshot.jam.answers,
+      ...(members
+        ? {
+            crew: members
+              .filter(
+                (m) =>
+                  m.email.toLowerCase() !== snapshot.user.email.toLowerCase(),
+              )
+              .map((m) => ({ ...m, roles: memberRoles(m) })),
+          }
+        : {}),
       ...(event
         ? {
             start: inputDate(String(event.start || "")),
@@ -18,6 +36,7 @@ export function hydratedJam(snapshot: LocalSnapshot) {
             mode: event.mode,
             venue: event.venue,
             platform: event.platform,
+            joinUrl: event.joinUrl,
             framework: event.framework,
             frameworkName: event.frameworkName,
           }
@@ -50,9 +69,11 @@ export function EventReview({
     ],
     ["Sede", a.venue],
     ["Plataforma", a.platform],
+    ["Enlace de acceso", a.joinUrl],
     ["Universidad", a.university ? a.universityRelation : "No"],
     ["Evento marco", a.framework ? a.frameworkName : "No"],
     ["Participantes esperados", a.participants],
+    ["Tamaño del evento (sin organizadores)", eventSize(a.participants)],
     ["Infraestructura", a.infrastructure ? "Disponible" : "Por confirmar"],
     ["Socio clave", a.partner ? a.partnerName : "No"],
     ["Grupo o sociedad civil", a.civil ? a.civilName : "No"],
@@ -81,7 +102,19 @@ export function EventReview({
             .map(([label, value]) => (
               <div key={label}>
                 <dt>{label}</dt>
-                <dd>{value}</dd>
+                <dd>
+                  {label === "Enlace de acceso" && validJoinUrl(value) ? (
+                    <a
+                      href={String(value)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {value}
+                    </a>
+                  ) : (
+                    value
+                  )}
+                </dd>
               </div>
             ))}
         </dl>

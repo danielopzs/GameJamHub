@@ -5,13 +5,20 @@ export type JamAnswers = {
   planningStart?: string;
   student?: boolean;
   studentName?: string;
-  crew?: { name: string; email: string; role: string; color: string }[];
+  crew?: {
+    name: string;
+    email: string;
+    role: string;
+    roles?: string[];
+    color: string;
+  }[];
   venue?: string;
   university?: boolean;
   universityRelation?: string;
   framework?: boolean;
   frameworkName?: string;
   platform?: string;
+  joinUrl?: string;
   participants?: number;
   infrastructure?: boolean;
   partner?: boolean;
