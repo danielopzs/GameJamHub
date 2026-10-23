@@ -31,7 +31,7 @@ type LocalContextValue = {
   discard: () => Promise<void>;
   download: () => void;
   logout: () => Promise<void>;
-  editSetup: () => void;
+  editSetup: () => Promise<void>;
 };
 const Context = createContext<LocalContextValue | null>(null);
 export const useLocalEvent = () => useContext(Context);
@@ -45,7 +45,7 @@ export function LocalProvider({
   initial: LocalSnapshot;
   children: ReactNode;
   onLogout: () => Promise<void>;
-  onEdit: (jam: LocalJam) => void;
+  onEdit: (snapshot: LocalSnapshot) => void;
 }) {
   const key = `gj-local:${initial.user.id}:${initial.jam.id}`;
   const initialData = (): Snapshot => {
@@ -238,7 +238,10 @@ export function LocalProvider({
         discard,
         download,
         logout,
-        editSetup: () => onEdit(jam),
+        editSetup: async () => {
+          const latest = await localApi<LocalSnapshot>(`jams/${jam.id}`);
+          onEdit(latest);
+        },
       }}
     >
       {children}

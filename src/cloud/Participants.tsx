@@ -1,5 +1,8 @@
+import { createId } from "../id";
 import { useState } from "react";
-import { Plus, Users, Trash2, Search } from "lucide-react";
+import { useLocalEvent } from "../local/store";
+import { localApi } from "../local/types";
+import { Plus, Users, Trash2, Search, Download, Copy } from "lucide-react";
 import { useLocal } from "../storage";
 import { Dialog } from "../Dialog";
 type Participant = {
@@ -8,8 +11,15 @@ type Participant = {
   email: string;
   teamCode: string;
   checkedIn: boolean;
+  ticketCode?: string;
+  source?: string;
+  registeredAt?: string;
 };
 export function Participants() {
+  const local = useLocalEvent();
+  const [capacity] = useLocal("gj-registration-capacity", 100);
+  const limit = local ? capacity : 100;
+  const [message, setMessage] = useState("");
   const [people, setPeople] = useLocal<Participant[]>("gj-participants", []);
   const [teams] = useLocal<{ code: string; name: string }[]>("gj-teams", []);
   const [show, setShow] = useState(false);
@@ -24,13 +34,13 @@ export function Participants() {
             Registro de participantes
           </h3>
           <p>
-            {people.length} / 100 registrados ·{" "}
+            {people.length} / {limit} registrados ·{" "}
             {people.filter((p) => p.checkedIn).length} con entrada confirmada
           </p>
         </div>
         <button
           className="button primary"
-          disabled={people.length >= 100}
+          disabled={people.length >= limit}
           onClick={() => {
             setError("");
             setShow(true);
@@ -40,6 +50,47 @@ export function Participants() {
           Participante
         </button>
       </div>
+      {local && (
+        <button
+          className="button secondary"
+          onClick={() => {
+            const quote = (v: unknown) => {
+              let s = String(v ?? "");
+              if (/^[=+@-]/.test(s)) s = "'" + s;
+              return '"' + s.replaceAll('"', '""') + '"';
+            };
+            const rows = [
+              ["Nombre", "Correo", "Equipo", "Check-in", "Código", "Origen"],
+              ...people.map((p) => [
+                p.name,
+                p.email,
+                p.teamCode,
+                p.checkedIn ? "Confirmado" : "Pendiente",
+                p.ticketCode || "",
+                p.source || "Manual",
+              ]),
+            ];
+            const url = URL.createObjectURL(
+              new Blob(
+                [
+                  "\uFEFF" +
+                    rows.map((row) => row.map(quote).join(",")).join("\r\n"),
+                ],
+                { type: "text/csv;charset=utf-8" },
+              ),
+            );
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "participantes.csv";
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          <Download size={15} />
+          Exportar participantes
+        </button>
+      )}
+      {message && <p role="status">{message}</p>}
       <div className="search-field participant-search">
         <Search size={16} />
         <input
@@ -62,17 +113,47 @@ export function Participants() {
           <tbody>
             {people
               .filter((p) =>
-                (p.name + " " + p.email)
+                (p.name + " " + p.email + " " + (p.ticketCode || ""))
                   .toLowerCase()
                   .includes(query.toLowerCase()),
               )
               .map((p) => (
                 <tr key={p.id}>
-                  <td>{p.name}</td>
+                  <td>
+                    {p.name}
+                    {local && (
+                      <small style={{ display: "block" }}>
+                        {p.ticketCode || "Registro manual"}
+                      </small>
+                    )}
+                  </td>
                   <td>{p.email || "Sin correo"}</td>
                   <td>
-                    {teams.find((t) => t.code === p.teamCode)?.name ||
-                      "Sin equipo"}
+                    {local ? (
+                      <select
+                        aria-label={`Equipo de ${p.name}`}
+                        value={p.teamCode}
+                        onChange={(e) =>
+                          setPeople(
+                            people.map((person) =>
+                              person.id === p.id
+                                ? { ...person, teamCode: e.target.value }
+                                : person,
+                            ),
+                          )
+                        }
+                      >
+                        <option value="">Sin equipo</option>
+                        {teams.map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      teams.find((t) => t.code === p.teamCode)?.name ||
+                      "Sin equipo"
+                    )}
                   </td>
                   <td>
                     <label className="checkbox-label">
@@ -93,6 +174,40 @@ export function Participants() {
                     </label>
                   </td>
                   <td>
+                    {local && (
+                      <button
+                        className="icon-button"
+                        aria-label={`Recuperar comprobante de ${p.name}`}
+                        onClick={async () => {
+                          if (
+                            !confirm(
+                              "Se creará un nuevo enlace personal y el anterior dejará de funcionar. ¿Continuar?",
+                            )
+                          )
+                            return;
+                          try {
+                            const result = await localApi<{ token: string }>(
+                              `jams/${local.jam.id}/tickets/${p.id}`,
+                              { method: "POST", body: "{}" },
+                            );
+                            const link =
+                              location.origin + "/#ticket=" + result.token;
+                            try {
+                              await navigator.clipboard.writeText(link);
+                              setMessage(
+                                "Nuevo enlace del comprobante copiado",
+                              );
+                            } catch {
+                              setMessage("Nuevo enlace personal: " + link);
+                            }
+                          } catch (e) {
+                            setMessage((e as Error).message);
+                          }
+                        }}
+                      >
+                        <Copy size={16} />
+                      </button>
+                    )}
                     <button
                       className="icon-button"
                       aria-label={`Eliminar a ${p.name}`}
@@ -131,8 +246,8 @@ export function Participants() {
               const email = String(f.get("email") || "")
                 .trim()
                 .toLowerCase();
-              if (people.length >= 100) {
-                setError("Se alcanzó el límite de 100 participantes");
+              if (people.length >= limit) {
+                setError(`Se alcanzó el cupo de ${limit} participantes`);
                 return;
               }
               if (email && people.some((p) => p.email === email)) {
@@ -142,7 +257,7 @@ export function Participants() {
               setPeople([
                 ...people,
                 {
-                  id: crypto.randomUUID(),
+                  id: createId(),
                   name,
                   email,
                   teamCode: String(f.get("team") || ""),

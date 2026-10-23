@@ -386,3 +386,401 @@ test("failed login attempts are limited", async () => {
     db.close();
   }
 });
+
+test("recurring editions have distinct identities, hybrid dates and crew survive onboarding", async () => {
+  const { db, request: r } = fixture();
+  try {
+    const first = await r("register", {
+      ...credentials,
+      jamName: "Global Game Jam",
+      edition: "2027",
+    });
+    const second = await r("login", {
+      jamName: "Global Game Jam",
+      edition: "2028",
+      identifier: credentials.username,
+      password: credentials.password,
+      create: true,
+    });
+    assert.equal(first.status, 201);
+    assert.equal(second.status, 200);
+    assert.notEqual(first.jam.id, second.jam.id);
+    assert.equal(
+      (await r("lookup", { name: "GLOBAL game jam", edition: " 2027 " })).id,
+      first.jam.id,
+    );
+    const answers = {
+      ...physical,
+      mode: "Híbrido",
+      platform: "Discord",
+      start: "2027-05-01T10:00:00Z",
+      end: "2027-05-03T10:00:00Z",
+      planningStart: "2027-04-20T10:00:00Z",
+      student: true,
+      studentName: "Sociedad de videojuegos",
+      crew: [
+        {
+          name: "Luis Torres",
+          email: "luis@example.com",
+          role: "Director de Logística & Venue",
+        },
+      ],
+    };
+    const path = `jams/${first.jam.id}`;
+    assert.equal(
+      (
+        await r(
+          path + "/onboarding",
+          { answers, revision: 0, complete: true },
+          first.cookie,
+          "PUT",
+        )
+      ).status,
+      200,
+    );
+    const state = await r(path, null, first.cookie);
+    assert.equal(state.jam.answers.studentName, answers.studentName);
+    assert.equal(
+      state.state.find((v) => v.key === "gj-members").value.length,
+      2,
+    );
+    assert.equal(
+      state.state.find((v) => v.key === "gj-event").value.platform,
+      "Discord",
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/onboarding",
+          {
+            answers: { ...answers, end: answers.start },
+            revision: 1,
+            complete: true,
+          },
+          first.cookie,
+          "PUT",
+        )
+      ).status,
+      400,
+    );
+    const event = state.state.find((v) => v.key === "gj-event");
+    assert.equal(
+      (
+        await r(
+          path + "/state/gj-event",
+          {
+            value: { ...event.value, edition: "2028" },
+            revision: event.revision,
+          },
+          first.cookie,
+          "PUT",
+        )
+      ).status,
+      409,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("judges have private scorecards, independent revisions and no organizer permissions", async () => {
+  const { db, request: r } = fixture();
+  try {
+    const { jam, cookie } = await r("register", credentials),
+      path = `jams/${jam.id}`;
+    await r(
+      path + "/onboarding",
+      { answers: virtual, revision: 0, complete: true },
+      cookie,
+      "PUT",
+    );
+    await r(
+      path + "/state/gj-teams",
+      {
+        value: [{ code: "T1", name: "Equipo", game: "Juego", votes: 0 }],
+        revision: 1,
+      },
+      cookie,
+      "PUT",
+    );
+    const judge = {
+      name: "Juez Uno",
+      email: "juez1@example.com",
+      username: "judge1",
+      password: "judge-pass",
+      role: "judge",
+    };
+    assert.equal((await r(path + "/access", judge, cookie)).status, 201);
+    assert.equal(
+      (
+        await r(
+          path + "/access",
+          {
+            ...judge,
+            name: "Juez Dos",
+            email: "juez2@example.com",
+            username: "judge2",
+          },
+          cookie,
+        )
+      ).status,
+      201,
+    );
+    const login = await r("login", {
+      jamName: credentials.jamName,
+      identifier: "judge1",
+      password: "judge-pass",
+    });
+    assert.equal(login.user.role, "judge");
+    const second = await r("login", {
+      jamName: credentials.jamName,
+      identifier: "judge2",
+      password: "judge-pass",
+    });
+    assert.equal((await r(path, null, login.cookie)).status, 403);
+    assert.equal(
+      (
+        await r(
+          path + "/state/gj-teams",
+          { value: [], revision: 2 },
+          login.cookie,
+          "PUT",
+        )
+      ).status,
+      403,
+    );
+    const scores = Array(21).fill(1);
+    assert.equal(
+      (
+        await r(
+          path + "/scorecards/T1",
+          { scores, revision: 0 },
+          login.cookie,
+          "PUT",
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/scorecards/T1",
+          { scores: scores.map(() => 2), revision: 0 },
+          second.cookie,
+          "PUT",
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/scorecards/T1",
+          { scores, revision: 0 },
+          login.cookie,
+          "PUT",
+        )
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/scorecards/T1",
+          { scores: [999], revision: 1 },
+          login.cookie,
+          "PUT",
+        )
+      ).status,
+      400,
+    );
+    const own = await r(path + "/portal", null, login.cookie);
+    assert.equal(own.scorecards.length, 1);
+    assert.equal(own.scorecards[0].scores[0], 1);
+    assert.equal(
+      own.reminders.every((n) => ["Todos", "Jueces"].includes(n.audience)),
+      true,
+    );
+    const state = await r(path, null, cookie);
+    assert.equal(
+      Object.keys(state.state.find((v) => v.key === "gj-evaluations").value)
+        .length,
+      2,
+    );
+    await r(path + "/access/" + login.user.id, null, cookie, "DELETE");
+    assert.equal((await r(path + "/portal", null, login.cookie)).status, 401);
+  } finally {
+    db.close();
+  }
+});
+
+test("public enrollment enforces capacity, isolates tickets and allows organizer check-in only", async () => {
+  const { db, request: r } = fixture();
+  try {
+    const { jam, cookie } = await r("register", credentials),
+      path = `jams/${jam.id}`;
+    await r(
+      path + "/onboarding",
+      { answers: {...virtual,start:"2027-05-01T10:00:00Z",end:"2027-05-03T10:00:00Z",planningStart:"2027-04-20T10:00:00Z"}, revision: 0, complete: true },
+      cookie,
+      "PUT",
+    );
+    assert.equal((await r(`public/${jam.id}`)).status, 403);
+    const state = await r(path, null, cookie),
+      event = state.state.find((v) => v.key === "gj-event");
+    await r(
+      path + "/state/gj-event",
+      {
+        value: { ...event.value, registrationOpen: true },
+        revision: event.revision,
+      },
+      cookie,
+      "PUT",
+    );
+    await r(
+      path + "/state/gj-registration-capacity",
+      { value: 1, revision: 1 },
+      cookie,
+      "PUT",
+    );
+    const results = await Promise.all([
+      r(`public/${jam.id}`, { name: "Persona A", email: "a@example.com" }),
+      r(`public/${jam.id}`, { name: "Persona B", email: "b@example.com" }),
+    ]);
+    assert.deepEqual(results.map((v) => v.status).sort(), [201, 409]);
+    const registered = results.find((v) => v.status === 201);
+    assert.equal((await r("ticket", { token: "incorrecto" })).status, 404);
+    const receipt = await r("ticket", { token: registered.token });
+    assert.equal(receipt.person.checkedIn, false);
+    assert.equal(
+      receipt.reminders.every((n) =>
+        ["Todos", "Participantes"].includes(n.audience),
+      ),
+      true,
+    );
+    assert.equal((await r(path, null, receipt.cookie)).status, 401);
+    const latest = await r(path, null, cookie),
+      people = latest.state.find((v) => v.key === "gj-participants");
+    assert.equal(
+      (
+        await r(
+          path + "/state/gj-participants",
+          {
+            value: people.value.map((p) => ({ ...p, checkedIn: true })),
+            revision: people.revision,
+          },
+          cookie,
+          "PUT",
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await r("ticket", { token: registered.token })).person.checkedIn,
+      true,
+    );
+    const recovered = await r(
+      path + "/tickets/" + people.value[0].id,
+      {},
+      cookie,
+    );
+    assert.equal(recovered.status, 200);
+    assert.equal((await r("ticket", { token: registered.token })).status, 404);
+    assert.equal(
+      (await r("ticket", { token: recovered.token })).person.checkedIn,
+      true,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("committee access can distribute tasks without changing event settings or evaluations", async () => {
+  const { db, request: r } = fixture();
+  try {
+    const { jam, cookie } = await r("register", credentials),
+      path = `jams/${jam.id}`;
+    await r(
+      path + "/onboarding",
+      {
+        answers: {
+          ...virtual,
+          crew: [
+            {
+              name: "Staff Uno",
+              email: "staff@example.com",
+              role: "Director de Logística & Venue",
+            },
+          ],
+        },
+        revision: 0,
+        complete: true,
+      },
+      cookie,
+      "PUT",
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/access",
+          {
+            name: "Staff Uno",
+            email: "staff@example.com",
+            username: "staff",
+            password: "staff-pass",
+            role: "staff",
+          },
+          cookie,
+        )
+      ).status,
+      201,
+    );
+    const login = await r("login", {
+      jamName: credentials.jamName,
+      identifier: "staff",
+      password: "staff-pass",
+    });
+    assert.equal(login.user.role, "staff");
+    const portal = await r(path + "/portal", null, login.cookie),
+      task = portal.tasks[0];
+    assert.equal(portal.tasks.length, 31);
+    assert.equal(portal.members[0].email, undefined);
+    const data = {
+      status: "En progreso",
+      owner: "Staff Uno",
+      expected: { status: task.status, owner: task.owner },
+    };
+    assert.equal(
+      (await r(path + "/tasks/" + task.id, data, login.cookie, "PUT")).status,
+      200,
+    );
+    assert.equal(
+      (await r(path + "/tasks/" + task.id, data, login.cookie, "PUT")).status,
+      409,
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/state/gj-weight",
+          { value: 0, revision: 1 },
+          login.cookie,
+          "PUT",
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await r(
+          path + "/scorecards/T1",
+          { scores: [], revision: 0 },
+          login.cookie,
+          "PUT",
+        )
+      ).status,
+      403,
+    );
+  } finally {
+    db.close();
+  }
+});

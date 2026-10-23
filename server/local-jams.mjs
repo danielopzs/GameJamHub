@@ -5,6 +5,7 @@ import {
   timingSafeEqual,
   createHash,
 } from "node:crypto";
+import { createLocalPortals } from "./local-portals.mjs";
 import { promisify } from "node:util";
 import taskTemplate from "../shared/task-template.json" with { type: "json" };
 
@@ -16,6 +17,16 @@ export const jamKey = (name) =>
     .trim()
     .replace(/\s+/g, " ")
     .toLocaleLowerCase("es");
+const editionValue = (value) => {
+  const edition = String(value || "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ");
+  requireValue(edition.length <= 60, "La edición admite hasta 60 caracteres.");
+  return edition;
+};
+const eventKey = (name, edition = "") =>
+  edition ? JSON.stringify([jamKey(name), jamKey(edition)]) : jamKey(name);
 const cleanName = (name) =>
   String(name || "")
     .normalize("NFKC")
@@ -46,6 +57,10 @@ function answersFrom(value, complete = false) {
   const answers = {};
   for (const key of [
     "mode",
+    "start",
+    "end",
+    "planningStart",
+    "studentName",
     "venue",
     "universityRelation",
     "frameworkName",
@@ -57,6 +72,7 @@ function answersFrom(value, complete = false) {
       answers[key] = value[key].trim().slice(0, 250);
   for (const key of [
     "university",
+    "student",
     "framework",
     "infrastructure",
     "partner",
@@ -82,12 +98,61 @@ function answersFrom(value, complete = false) {
   if (answers.framework === false) delete answers.frameworkName;
   if (answers.partner === false) delete answers.partnerName;
   if (answers.civil === false) delete answers.civilName;
+  if (value.crew !== undefined) {
+    requireValue(
+      Array.isArray(value.crew) && value.crew.length <= 9,
+      "Agrega hasta 9 integrantes además del organizador.",
+    );
+    const emails = new Set();
+    answers.crew = value.crew.map((member) => {
+      const name = cleanName(member.name),
+        email = String(member.email || "")
+          .trim()
+          .toLowerCase(),
+        role = cleanName(member.role);
+      requireValue(
+        name.length >= 2 &&
+          name.length <= 120 &&
+          /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
+          email.length <= 254 &&
+          role.length > 0 &&
+          role.length <= 120,
+        "Completa nombre, correo y rol de cada integrante.",
+      );
+      requireValue(!emails.has(email), "No repitas correos en el equipo.");
+      emails.add(email);
+      return {
+        name,
+        email,
+        role,
+        color: ["blue", "purple", "pink", "orange"][emails.size % 4],
+      };
+    });
+  }
+  if (answers.student === false) delete answers.studentName;
+  if (
+    (complete && (answers.start || answers.end)) ||
+    (answers.start && answers.end)
+  ) {
+    const start = Date.parse(answers.start),
+      end = Date.parse(answers.end),
+      planning = Date.parse(answers.planningStart);
+    requireValue(
+      Number.isFinite(start) && Number.isFinite(end) && end > start,
+      "La fecha de fin debe ser posterior al inicio.",
+    );
+    requireValue(
+      !answers.planningStart ||
+        (Number.isFinite(planning) && planning <= start),
+      "La planeación debe comenzar antes del evento.",
+    );
+  }
   if (complete) {
     requireValue(
-      ["Virtual", "Presencial"].includes(answers.mode),
+      ["Virtual", "Presencial", "Híbrido"].includes(answers.mode),
       "Selecciona la modalidad.",
     );
-    if (answers.mode === "Presencial") {
+    if (answers.mode !== "Virtual") {
       requireValue(!!answers.venue, "Indica dónde harás el game jam.");
       requireValue(
         typeof answers.university === "boolean",
@@ -100,7 +165,11 @@ function answersFrom(value, complete = false) {
           ),
           "Selecciona la relación con la universidad.",
         );
-    } else requireValue(!!answers.platform, "Indica la plataforma del evento.");
+    }
+    if (answers.mode !== "Presencial")
+      requireValue(!!answers.platform, "Indica la plataforma del evento.");
+    if (answers.student)
+      requireValue(!!answers.studentName, "Indica la asociación estudiantil.");
     for (const key of ["framework", "infrastructure", "partner", "civil"])
       requireValue(
         typeof answers[key] === "boolean",
@@ -130,6 +199,17 @@ export function createLocalJams(db) {
  CREATE TABLE IF NOT EXISTS local_sessions(token_hash TEXT PRIMARY KEY,organizer_id TEXT NOT NULL REFERENCES local_organizers(id),jam_id TEXT NOT NULL REFERENCES local_jams(id),expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS local_migrations(name TEXT PRIMARY KEY,jam_id TEXT NOT NULL);
  `);
+  if (
+    !db
+      .prepare("PRAGMA table_info(local_jams)")
+      .all()
+      .some((c) => c.name === "edition")
+  )
+    db.exec(
+      "ALTER TABLE local_jams ADD COLUMN edition TEXT NOT NULL DEFAULT ''",
+    );
+  db.exec(`CREATE TABLE IF NOT EXISTS local_access(jam_id TEXT NOT NULL REFERENCES local_jams(id),user_id TEXT NOT NULL REFERENCES local_organizers(id),role TEXT NOT NULL CHECK(role IN ('judge','participant','staff')),PRIMARY KEY(jam_id,user_id));
+  CREATE TABLE IF NOT EXISTS local_scorecards(jam_id TEXT NOT NULL REFERENCES local_jams(id),user_id TEXT NOT NULL REFERENCES local_organizers(id),team_code TEXT NOT NULL,scores TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(jam_id,user_id,team_code));`);
   // Additive upgrade: keep the original state table intact and copy its one event once.
   if (
     !db
@@ -177,6 +257,9 @@ export function createLocalJams(db) {
     "gj-evaluations",
     "gj-weight",
     "gj-participants",
+    "gj-prizes",
+    "gj-reminders",
+    "gj-registration-capacity",
   ]);
   const failures = new Map();
   function transaction(fn) {
@@ -194,6 +277,8 @@ export function createLocalJams(db) {
     return {
       id: row.id,
       name: row.name,
+      edition: row.edition || "",
+      createdAt: row.created_at.replace(" ", "T") + "Z",
       onboarded: !!row.onboarded,
       answers: JSON.parse(row.answers),
       answersRevision: row.answers_revision,
@@ -205,6 +290,7 @@ export function createLocalJams(db) {
       name: row.name,
       username: row.username,
       email: row.email,
+      role: row.role || "organizer",
     };
   }
   function session(req) {
@@ -213,16 +299,18 @@ export function createLocalJams(db) {
       .map((s) => s.trim())
       .find((s) => s.startsWith("gj_session="))
       ?.slice(11);
-    if (!raw) return null;
-    return db
-      .prepare(
-        "SELECT s.jam_id,u.* FROM local_sessions s JOIN local_organizers u ON u.id=s.organizer_id WHERE s.token_hash=? AND s.expires_at>?",
-      )
-      .get(digest(raw), Date.now());
+    if (!raw) return portals.ticketSession(req);
+    return (
+      db
+        .prepare(
+          "SELECT s.jam_id,u.*,CASE WHEN j.owner_id=u.id THEN 'organizer' ELSE a.role END AS role FROM local_sessions s JOIN local_organizers u ON u.id=s.organizer_id JOIN local_jams j ON j.id=s.jam_id LEFT JOIN local_access a ON a.jam_id=j.id AND a.user_id=u.id WHERE s.token_hash=? AND s.expires_at>? AND (j.owner_id=u.id OR a.user_id IS NOT NULL)",
+        )
+        .get(digest(raw), Date.now()) || portals.ticketSession(req)
+    );
   }
   function owner(req, id) {
     const user = session(req);
-    requireValue(!!user, "Inicia sesión para continuar.", 401);
+    requireValue(!!user && !user.ticket, "Inicia sesión para continuar.", 401);
     const jam = db
       .prepare("SELECT * FROM local_jams WHERE id=? AND owner_id=?")
       .get(id, user.id);
@@ -267,6 +355,14 @@ export function createLocalJams(db) {
     putValue(jam.id, "gj-event", {
       ...settings,
       name: jam.name,
+      edition: jam.edition || "",
+      start: answers.start || settings.start,
+      end: answers.end || settings.end,
+      planningStart:
+        answers.planningStart ||
+        settings.planningStart ||
+        jam.created_at.replace(" ", "T") + "Z",
+      platform: answers.platform || "",
       mode: answers.mode,
       venue: answers.mode === "Virtual" ? answers.platform : answers.venue,
       framework: answers.framework,
@@ -303,6 +399,9 @@ export function createLocalJams(db) {
       "gj-evaluations": {},
       "gj-weight": 85,
       "gj-participants": [],
+      "gj-prizes": [],
+      "gj-reminders": [],
+      "gj-registration-capacity": Math.min(100, answers.participants || 100),
     };
     for (const [key, value] of Object.entries(defaults))
       if (
@@ -311,6 +410,14 @@ export function createLocalJams(db) {
           .get(jam.id, key)
       )
         putValue(jam.id, key, value);
+    if (answers.crew?.length) {
+      const members = getValue(jam.id, "gj-members", []);
+      for (const member of answers.crew)
+        if (!members.some((m) => m.email.toLowerCase() === member.email))
+          members.push(member);
+      requireValue(members.length <= 10, "El comité admite hasta 10 personas.");
+      putValue(jam.id, "gj-members", members);
+    }
   }
   function validateState(key, value) {
     requireValue(allowedKeys.has(key), "Colección desconocida.", 404);
@@ -323,6 +430,8 @@ export function createLocalJams(db) {
         "gj-teams",
         "gj-judges",
         "gj-participants",
+        "gj-prizes",
+        "gj-reminders",
       ].includes(key)
     )
       requireValue(Array.isArray(value), "Se esperaba una lista.");
@@ -331,7 +440,64 @@ export function createLocalJams(db) {
         value && typeof value === "object" && !Array.isArray(value),
         "Se esperaba un objeto.",
       );
-    if (key === "gj-event") validateJam(value.name);
+    if (key === "gj-event") {
+      validateJam(value.name);
+      editionValue(value.edition);
+      if (value.start || value.end)
+        requireValue(
+          Number.isFinite(Date.parse(value.start)) &&
+            Date.parse(value.end) > Date.parse(value.start),
+          "Revisa inicio y fin del evento.",
+        );
+      if (value.planningStart)
+        requireValue(
+          Number.isFinite(Date.parse(value.planningStart)) &&
+            Date.parse(value.planningStart) <= Date.parse(value.start),
+          "La planeación debe comenzar antes del evento.",
+        );
+    }
+    if (key === "gj-registration-capacity")
+      requireValue(
+        Number.isInteger(value) && value > 0 && value <= 100,
+        "El cupo debe ser entre 1 y 100.",
+      );
+    if (key === "gj-prizes")
+      for (const p of value)
+        requireValue(
+          typeof p.id === "string" &&
+            String(p.name || "").trim() &&
+            Number.isFinite(p.value) &&
+            p.value >= 0 &&
+            Number.isInteger(p.quantity) &&
+            p.quantity > 0 &&
+            [0, 1, 2, 3].includes(p.place) &&
+            ["Propuesto", "Confirmado", "Entregado"].includes(p.status),
+          "Revisa nombre, valor, cantidad, posición y estado del premio.",
+        );
+    if (key === "gj-reminders")
+      for (const r of value)
+        requireValue(
+          typeof r.id === "string" &&
+            String(r.text || "").trim() &&
+            String(r.text).length <= 500 &&
+            Number.isFinite(Date.parse(r.at)) &&
+            ["Todos", "Organizadores", "Jueces", "Participantes"].includes(
+              r.audience,
+            ) &&
+            ["critical", "action", "info"].includes(r.level),
+          "Revisa destinatario, nivel, fecha y mensaje del recordatorio.",
+        );
+    if (key === "gj-members")
+      requireValue(value.length <= 10, "Máximo 10 integrantes.");
+    if (key === "gj-judges")
+      requireValue(value.length <= 5, "Máximo 5 jueces.");
+    if (key === "gj-teams")
+      for (const t of value)
+        if (t.submission)
+          requireValue(
+            /^https?:\/\//i.test(t.submission),
+            "La entrega debe ser un enlace HTTP o HTTPS.",
+          );
     if (key === "gj-weight")
       requireValue(
         Number.isFinite(value) && value >= 0 && value <= 100,
@@ -343,16 +509,41 @@ export function createLocalJams(db) {
         "Máximo 100 participantes registrados por evento.",
       );
   }
+  function allScores(id) {
+    const values = getValue(id, "gj-evaluations", {});
+    for (const row of db
+      .prepare(
+        "SELECT u.name,s.user_id,s.team_code,s.scores FROM local_scorecards s JOIN local_organizers u ON u.id=s.user_id WHERE s.jam_id=?",
+      )
+      .all(id)) {
+      delete values[`${row.name}:${row.team_code}`];
+      values[`${row.user_id}:${row.team_code}`] = JSON.parse(row.scores);
+    }
+    return values;
+  }
+  const portals = createLocalPortals({
+    db,
+    session,
+    owner,
+    profile,
+    jamInfo,
+    getValue,
+    putValue,
+    transaction,
+    requireValue,
+  });
   async function handle(req, res, path, body, reply) {
     if (!path.startsWith("/api/local/") && !path.startsWith("/api/state/"))
       return false;
     try {
+      if (await portals.handle(req, res, path, body, reply)) return true;
       if (path === "/api/local/lookup" && req.method === "POST") {
-        const { name } = await body(req);
+        const { name, edition: inputEdition } = await body(req);
+        const edition = editionValue(inputEdition);
         const display = validateJam(name);
         const row = db
           .prepare("SELECT * FROM local_jams WHERE name_key=?")
-          .get(jamKey(display));
+          .get(eventKey(display, edition));
         reply(
           res,
           200,
@@ -361,15 +552,17 @@ export function createLocalJams(db) {
                 exists: true,
                 id: row.id,
                 name: row.name,
+                edition: row.edition,
                 needsOwner: !row.owner_id,
               }
-            : { exists: false, name: display },
+            : { exists: false, name: display, edition },
         );
         return true;
       }
       if (path === "/api/local/register" && req.method === "POST") {
         const data = await body(req);
         const name = validateJam(data.jamName);
+        const edition = editionValue(data.edition);
         const fullName = cleanName(data.name);
         const username = String(data.username || "")
           .trim()
@@ -405,7 +598,7 @@ export function createLocalJams(db) {
         const result = transaction(() => {
           const previous = db
             .prepare("SELECT * FROM local_jams WHERE name_key=?")
-            .get(jamKey(name));
+            .get(eventKey(name, edition));
           requireValue(
             !previous?.owner_id,
             "Este jam ya tiene organizador. Inicia sesión.",
@@ -437,8 +630,8 @@ export function createLocalJams(db) {
           else {
             jamId = randomUUID();
             db.prepare(
-              "INSERT INTO local_jams(id,name,name_key,owner_id) VALUES(?,?,?,?)",
-            ).run(jamId, name, jamKey(name), id);
+              "INSERT INTO local_jams(id,name,name_key,owner_id,edition) VALUES(?,?,?,?,?)",
+            ).run(jamId, name, eventKey(name, edition), id, edition);
           }
           return {
             user: db
@@ -457,10 +650,11 @@ export function createLocalJams(db) {
       if (path === "/api/local/login" && req.method === "POST") {
         const data = await body(req);
         const name = validateJam(data.jamName);
+        const edition = editionValue(data.edition);
         const identity = String(data.identifier || "")
           .trim()
           .toLowerCase();
-        const rateKey = `${req.socket.remoteAddress}:${jamKey(name)}:${identity}`;
+        const rateKey = `${req.socket.remoteAddress}:${eventKey(name, edition)}:${identity}`;
         const failure = failures.get(rateKey);
         requireValue(
           !failure || failure.count < 5 || failure.until < Date.now(),
@@ -482,12 +676,21 @@ export function createLocalJams(db) {
         );
         let jam = db
           .prepare("SELECT * FROM local_jams WHERE name_key=?")
-          .get(jamKey(name));
+          .get(eventKey(name, edition));
+        const grant =
+          user && jam
+            ? db
+                .prepare(
+                  "SELECT role FROM local_access WHERE jam_id=? AND user_id=?",
+                )
+                .get(jam.id, user.id)
+            : null;
         if (
           !user ||
           !timingSafeEqual(derived, Buffer.from(hash, "hex")) ||
           (jam &&
             jam.owner_id !== user.id &&
+            !grant &&
             !(!jam.owner_id && data.create)) ||
           (!jam && !data.create)
         ) {
@@ -501,14 +704,14 @@ export function createLocalJams(db) {
               if (v.until < Date.now()) failures.delete(k);
           throw new HttpError(
             401,
-            "El usuario o la contraseña/PIN no corresponden al organizador de este jam.",
+            "El usuario o la contraseña/PIN no corresponden a un acceso de esta edición.",
           );
         }
         if (!jam?.owner_id)
           jam = transaction(() => {
             const existing = db
               .prepare("SELECT * FROM local_jams WHERE name_key=?")
-              .get(jamKey(name));
+              .get(eventKey(name, edition));
             requireValue(
               !existing?.owner_id,
               "El jam acaba de ser registrado. Vuelve a buscarlo.",
@@ -530,13 +733,16 @@ export function createLocalJams(db) {
               );
             else
               db.prepare(
-                "INSERT INTO local_jams(id,name,name_key,owner_id) VALUES(?,?,?,?)",
-              ).run(id, name, jamKey(name), user.id);
+                "INSERT INTO local_jams(id,name,name_key,owner_id,edition) VALUES(?,?,?,?,?)",
+              ).run(id, name, eventKey(name, edition), user.id, edition);
             return db.prepare("SELECT * FROM local_jams WHERE id=?").get(id);
           });
         failures.delete(rateKey);
         setCookie(res, user.id, jam.id);
-        reply(res, 200, { user: profile(user), jam: jamInfo(jam) });
+        reply(res, 200, {
+          user: profile({ ...user, role: grant?.role || "organizer" }),
+          jam: grant ? { ...jamInfo(jam), answers: {} } : jamInfo(jam),
+        });
         return true;
       }
       if (path === "/api/local/logout" && req.method === "POST") {
@@ -571,7 +777,25 @@ export function createLocalJams(db) {
                 "SELECT key,value,revision FROM local_jam_state WHERE jam_id=?",
               )
               .all(id)
-              .map((r) => ({ ...r, value: JSON.parse(r.value) })),
+              .map((r) => ({
+                ...r,
+                value:
+                  r.key === "gj-evaluations"
+                    ? allScores(id)
+                    : JSON.parse(r.value),
+              }))
+              .concat([
+                {
+                  key: "gj-auth-judges",
+                  value: db
+                    .prepare(
+                      "SELECT u.name FROM local_access a JOIN local_organizers u ON u.id=a.user_id WHERE a.jam_id=? AND a.role='judge'",
+                    )
+                    .all(id)
+                    .map((u) => u.name),
+                  revision: 0,
+                },
+              ]),
           });
           return true;
         }
@@ -622,18 +846,19 @@ export function createLocalJams(db) {
             );
             if (key === "gj-event") {
               const name = validateJam(data.value.name);
+              const edition = editionValue(data.value.edition ?? jam.edition);
               requireValue(
                 !db
                   .prepare(
                     "SELECT id FROM local_jams WHERE name_key=? AND id<>?",
                   )
-                  .get(jamKey(name), id),
+                  .get(eventKey(name, edition), id),
                 "Ya existe otro jam con ese nombre.",
                 409,
               );
               db.prepare(
-                "UPDATE local_jams SET name=?,name_key=? WHERE id=?",
-              ).run(name, jamKey(name), id);
+                "UPDATE local_jams SET name=?,name_key=?,edition=? WHERE id=?",
+              ).run(name, eventKey(name, edition), edition, id);
             }
             putValue(id, key, data.value);
             return db

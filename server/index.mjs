@@ -104,7 +104,29 @@ const server = http.createServer(async (req, res) => {
       if (path === "/api/push/key" && req.method === "GET")
         return reply(res, 200, { publicKey: keys.publicKey });
       if (path === "/api/push/subscribe" && req.method === "POST") {
-        const { subscription, role = "Todos" } = await body(req);
+        const { subscription, role = "Todos", jamId } = await body(req);
+        const user = localJams.session(req);
+        let selectedId = user.jam_id;
+        if (jamId && jamId !== selectedId) {
+          if (user.role !== "organizer")
+            return reply(res, 403, {
+              error: "No tienes acceso a esa edición.",
+            });
+          localJams.owner(req, jamId);
+          selectedId = jamId;
+        }
+        if (
+          user.role !== "organizer" &&
+          role !==
+            (user.role === "judge"
+              ? "Jueces"
+              : user.role === "staff"
+                ? "Organizadores"
+                : "Participantes")
+        )
+          return reply(res, 403, {
+            error: "Selecciona los avisos de tu perfil.",
+          });
         const endpoint = new URL(subscription?.endpoint);
         const validHost =
           endpoint.hostname === "fcm.googleapis.com" ||
@@ -127,15 +149,23 @@ const server = http.createServer(async (req, res) => {
           subscription.endpoint,
           JSON.stringify(subscription),
           String(role),
-          localJams.session(req).jam_id,
+          selectedId,
         );
         return reply(res, 200, { ok: true });
       }
       if (path === "/api/push/unsubscribe" && req.method === "POST") {
-        const { endpoint } = await body(req);
+        const { endpoint, jamId } = await body(req);
+        const user = localJams.session(req);
+        let selectedId = user.jam_id;
+        if (jamId && jamId !== selectedId) {
+          if (user.role !== "organizer")
+            return reply(res, 403, { error: "Sin acceso." });
+          localJams.owner(req, jamId);
+          selectedId = jamId;
+        }
         db.prepare(
           "DELETE FROM subscriptions WHERE endpoint=? AND jam_id=?",
-        ).run(String(endpoint), localJams.session(req).jam_id);
+        ).run(String(endpoint), selectedId);
         return reply(res, 200, { ok: true });
       }
       return reply(res, 404, { error: "Not found" });
@@ -172,12 +202,25 @@ async function tick() {
       .all();
     for (const row of events) {
       const event = JSON.parse(row.value);
-      for (const reminder of dueReminders(event.start)) {
+      const custom = JSON.parse(
+        db
+          .prepare(
+            "SELECT value FROM local_jam_state WHERE jam_id=? AND key='gj-reminders'",
+          )
+          .get(row.jam_id)?.value || "[]",
+      );
+      for (const reminder of dueReminders(event, Date.now(), custom)) {
         for (const sub of db
           .prepare("SELECT * FROM subscriptions WHERE jam_id=?")
           .all(row.jam_id)) {
-          if (sub.role !== "Todos" && sub.role !== reminder.role) continue;
-          const id = `${row.jam_id}:${event.start}:${reminder.index}:${sub.endpoint}`;
+          if (
+            sub.role !== "Todos" &&
+            reminder.audience !== "Todos" &&
+            sub.role !== reminder.role &&
+            sub.role !== reminder.audience
+          )
+            continue;
+          const id = `${row.jam_id}:${event.start}:${reminder.id}:${reminder.at}:${sub.endpoint}`;
           if (db.prepare("SELECT id FROM sent WHERE id=?").get(id)) continue;
           try {
             await webpush.sendNotification(

@@ -1,3 +1,4 @@
+import { taskTimestamp } from "../../shared/planning.mjs";
 import {
   ArrowRight,
   CalendarDays,
@@ -7,7 +8,7 @@ import {
   Users,
 } from "lucide-react";
 import { useLocalEvent } from "./store";
-import { jamDate, taskDate } from "./dates";
+import { jamDate } from "./dates";
 import type { Task } from "../data";
 export function EventOverview({
   tasks,
@@ -28,6 +29,10 @@ export function EventOverview({
     venue: string;
     framework: boolean;
     frameworkName: string;
+    start: string;
+    end?: string;
+    planningStart?: string;
+    platform?: string;
   };
   const answers = {
     ...captured,
@@ -39,7 +44,8 @@ export function EventOverview({
     .filter((t) => t.status !== "Completada")
     .sort((a, b) =>
       hasDate
-        ? a.day - b.day || a.priority - b.priority
+        ? taskTimestamp(event, a) - taskTimestamp(event, b) ||
+          a.priority - b.priority
         : a.phase - b.phase || a.priority - b.priority,
     )
     .slice(0, 5);
@@ -55,7 +61,12 @@ export function EventOverview({
               <MapPin size={18} />
             )}
             <small>{event.mode === "Virtual" ? "Plataforma" : "Sede"}</small>
-            <strong>{event.venue}</strong>
+            <strong>
+              {event.venue}
+              {event.mode === "Híbrido" && event.platform
+                ? ` · ${event.platform}`
+                : ""}
+            </strong>
           </span>
           <span>
             <Users size={18} />
@@ -80,10 +91,10 @@ export function EventOverview({
             En el marco de <strong>{answers.frameworkName}</strong>
           </p>
         )}
-        {(answers.partner || answers.civil) && (
+        {(answers.partner || answers.civil || answers.student) && (
           <p>
             Nos acompañan:{" "}
-            {[answers.partnerName, answers.civilName]
+            {[answers.partnerName, answers.civilName, answers.studentName]
               .filter(Boolean)
               .join(" · ")}
           </p>
@@ -115,7 +126,10 @@ export function EventOverview({
         )}
         <div className="jam-upcoming-list">
           {upcoming.map((t) => {
-            const due = taskDate(start, t.day);
+            const timestamp = taskTimestamp(event, t);
+            const due = Number.isFinite(timestamp)
+              ? new Date(timestamp).toISOString()
+              : "";
             const overdue = due && new Date(due).getTime() < Date.now();
             return (
               <button key={t.id} onClick={onTasks}>

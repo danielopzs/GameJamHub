@@ -40,8 +40,21 @@ import { Dialog } from "./Dialog";
 import { STATIC_MODE } from "./runtime";
 import { LocalRoot } from "./local/LocalRoot";
 import { useLocalEvent } from "./local/store";
+import {
+  EventMetrics,
+  PrizeBudget,
+  JudgeAccess,
+  RegistrationSettings,
+  type Prize,
+} from "./local/EventOperations";
+import { Timeline } from "./local/Timeline";
+import {
+  OperationalReminders,
+  ReminderBanner,
+  NextReminderCard,
+} from "./local/Reminders";
 import { EventOverview } from "./local/EventOverview";
-import { jamDate, taskDate } from "./local/dates";
+import { jamDate, taskDate, inputDate } from "./local/dates";
 import { CloudRoot } from "./cloud/CloudRoot";
 import { useCloud } from "./cloud/store";
 import { Participants } from "./cloud/Participants";
@@ -78,9 +91,14 @@ function App() {
     cloud && !cloud.organizer ? "Evaluación y premios" : "Resumen",
   );
   const [tasks, setTasks] = useLocal("gj-tasks", initialTasks);
+  const [prizes] = useLocal<Prize[]>("gj-prizes", []);
   const [members, setMembers] = useLocal("gj-members", initialMembers);
   const [event, setEvent] = useLocal("gj-event", {
     name: "Global Game Jam 2026",
+    edition: "",
+    planningStart: "",
+    platform: "",
+    registrationOpen: false,
     start: "2026-01-30T17:00",
     end: "2026-02-01T17:00",
     mode: "Presencial",
@@ -158,12 +176,12 @@ function App() {
     };
   }, []);
   useEffect(() => {
-    if (!("Notification" in window)) return;
+    if (local || !("Notification" in window)) return;
     const check = () => {
       if (Notification.permission !== "granted") return;
       reminders.forEach((r, i) => {
         const when = new Date(event.start).getTime() + r.day * 86400000;
-        const key = `gj-sent-${local?.jam.id || cloud?.event.id || "demo"}-${event.start}-${i}`;
+        const key = `gj-sent-${cloud?.event.id || "demo"}-${event.start}-${i}`;
         if (
           Date.now() >= when &&
           Date.now() - when < 86400000 &&
@@ -246,7 +264,9 @@ function App() {
         .sort((a, b) => b.total - a.total)
     : localLeaderboard;
   return (
-    <div className={`app ${cloud && !cloud.organizer ? "judge-view" : ""}`}>
+    <div
+      className={`app ${local ? "local-view" : ""} ${cloud && !cloud.organizer ? "judge-view" : ""}`}
+    >
       <aside className={mobile ? "sidebar mobile-open" : "sidebar"}>
         <a
           className="brand"
@@ -286,6 +306,12 @@ function App() {
             [Trophy, "Evaluación y premios"],
             [Bell, "Recordatorios"],
             ...(cloud?.organizer || local ? [[Users, "Participantes"]] : []),
+            ...(local
+              ? [
+                  [Trophy, "Premios"],
+                  [Users, "Accesos del jurado"],
+                ]
+              : []),
           ]
             .filter(
               ([, label]) =>
@@ -310,7 +336,10 @@ function App() {
             ))}
         </nav>
         <div className="sidebar-event">
-          <span className="live-dot" /> PRÓXIMO EVENTO<h4>{event.name}</h4>
+          <span className="live-dot" /> PRÓXIMO EVENTO
+          <h4>
+            {event.name} {local?.jam.edition}
+          </h4>
           <p>
             {jamDate(event.start, {
               day: "numeric",
@@ -405,7 +434,7 @@ function App() {
           {notifications && (
             <div className="notification-panel">
               <strong>Tus recordatorios</strong>
-              {reminders.map((r, i) => (
+              {(local ? [] : reminders).map((r, i) => (
                 <div key={i}>
                   <small>
                     {r.role} · {r.day < 0 ? `T${r.day} días` : "Hora 46"}
@@ -467,6 +496,9 @@ function App() {
           </div>
           {page === "Resumen" && (
             <>
+              {local && (
+                <ReminderBanner onOpen={() => navigate("Recordatorios")} />
+              )}
               <section className="event-hero">
                 <div className="hero-content">
                   <div className="hero-badges">
@@ -474,14 +506,20 @@ function App() {
                       <i /> EN PREPARACIÓN
                     </span>
                     <span>
-                      {event.start
-                        ? `EDICIÓN ${new Date(event.start).getFullYear()}`
-                        : "FECHAS POR DEFINIR"}
+                      {local?.jam.edition
+                        ? `EDICIÓN ${local.jam.edition}`
+                        : event.start
+                          ? `EDICIÓN ${new Date(event.start).getFullYear()}`
+                          : "FECHAS POR DEFINIR"}
                     </span>
                   </div>
                   <h2>
-                    {event.name}
-                    <span>48 horas. Infinitas posibilidades.</span>
+                    {event.name} {local?.jam.edition}
+                    <span>
+                      {local
+                        ? "Tu comunidad. Una edición inolvidable."
+                        : "48 horas. Infinitas posibilidades."}
+                    </span>
                   </h2>
                   <div className="hero-meta">
                     <span>
@@ -544,6 +582,7 @@ function App() {
                 onTasks={() => navigate("Tareas")}
                 onDates={() => setModal("event")}
               />
+              {local && <EventMetrics />}
               <section className="stats">
                 <div className="stat-card">
                   <span className="stat-icon purple">
@@ -710,48 +749,52 @@ function App() {
                     </button>
                   </div>
                 </section>
-                <section className="panel next-panel">
-                  <div className="section-heading">
-                    <h3>
-                      <span className="next-icon">
-                        <Bell size={16} />
-                      </span>{" "}
-                      Próximo recordatorio
-                    </h3>
-                    <button
-                      className="icon-button"
-                      aria-label="Ver recordatorios"
-                      onClick={() => navigate("Recordatorios")}
-                    >
-                      <MoreHorizontal size={18} />
-                    </button>
-                  </div>
-                  <span className="reminder-label">
-                    T-30 DÍAS <span>Logística</span>
-                  </span>
-                  <h4>Que nada detenga la creatividad.</h4>
-                  <p>
-                    Confirmar acceso al venue 24/7 y conexión de red de al menos
-                    20 Mbps.
-                  </p>
-                  <div className="between">
-                    <span className="reminder-date">
-                      <CalendarDays size={14} />{" "}
-                      {jamDate(taskDate(event.start, -30), {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                {local ? (
+                  <NextReminderCard onOpen={() => navigate("Recordatorios")} />
+                ) : (
+                  <section className="panel next-panel">
+                    <div className="section-heading">
+                      <h3>
+                        <span className="next-icon">
+                          <Bell size={16} />
+                        </span>{" "}
+                        Próximo recordatorio
+                      </h3>
+                      <button
+                        className="icon-button"
+                        aria-label="Ver recordatorios"
+                        onClick={() => navigate("Recordatorios")}
+                      >
+                        <MoreHorizontal size={18} />
+                      </button>
+                    </div>
+                    <span className="reminder-label">
+                      T-30 DÍAS <span>Logística</span>
                     </span>
-                    <button
-                      className="round-arrow"
-                      aria-label="Configurar recordatorio"
-                      onClick={() => navigate("Recordatorios")}
-                    >
-                      <ArrowUpRight size={17} />
-                    </button>
-                  </div>
-                </section>
+                    <h4>Que nada detenga la creatividad.</h4>
+                    <p>
+                      Confirmar acceso al venue 24/7 y conexión de red de al
+                      menos 20 Mbps.
+                    </p>
+                    <div className="between">
+                      <span className="reminder-date">
+                        <CalendarDays size={14} />{" "}
+                        {jamDate(taskDate(event.start, -30), {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </span>
+                      <button
+                        className="round-arrow"
+                        aria-label="Configurar recordatorio"
+                        onClick={() => navigate("Recordatorios")}
+                      >
+                        <ArrowUpRight size={17} />
+                      </button>
+                    </div>
+                  </section>
+                )}
               </div>
             </>
           )}
@@ -833,6 +876,8 @@ function App() {
                 <TaskTable
                   members={members}
                   eventStart={event.start}
+                  eventEnd={local ? event.end : undefined}
+                  planningStart={local ? event.planningStart : undefined}
                   onUpdate={updateTask}
                   onEdit={(id) => setModal(`edit:${id}`)}
                   items={
@@ -883,6 +928,12 @@ function App() {
                     </div>
                   ))}
                 </div>
+              ) : local ? (
+                <Timeline
+                  tasks={filtered}
+                  event={event}
+                  onUpdate={updateTask}
+                />
               ) : (
                 <div className="gantt">
                   <div className="gantt-scale">
@@ -1027,7 +1078,9 @@ function App() {
                   <button
                     className="button secondary"
                     onClick={() => {
-                      if (cloud) {
+                      if (local) {
+                        navigate("Accesos del jurado");
+                      } else if (cloud) {
                         notify(
                           "Agrega jueces por correo desde Accesos del evento",
                         );
@@ -1153,6 +1206,15 @@ function App() {
                       </div>
                     );
                   })}
+                  {local &&
+                    (
+                      local.data["gj-auth-judges"] as string[] | undefined
+                    )?.includes(judge) && (
+                      <p className="info-note">
+                        Este juez tiene una cuenta propia. Sus evaluaciones se
+                        capturan desde su acceso del jurado.
+                      </p>
+                    )}
                   <div className="between">
                     <strong>
                       Total: {scores.reduce((a, b) => a + b, 0)} / 120
@@ -1162,6 +1224,9 @@ function App() {
                       disabled={
                         !judge ||
                         !teams.length ||
+                        !!(
+                          local?.data["gj-auth-judges"] as string[] | undefined
+                        )?.includes(judge) ||
                         (!!cloud && !cloud.canEvaluate)
                       }
                       onClick={() => {
@@ -1212,7 +1277,18 @@ function App() {
                         </small>
                         <p>
                           {t.count
-                            ? `Premio: ${i < 3 ? ["Primer", "Segundo", "Tercer"][i] + " lugar" : "Participación"}${event.vip && event.framework && i < 3 ? " · Pase VIP / booth en " + event.frameworkName : ""}`
+                            ? `${
+                                local
+                                  ? prizes
+                                      .filter(
+                                        (p) =>
+                                          p.place === i + 1 &&
+                                          p.status !== "Propuesto",
+                                      )
+                                      .map((p) => p.name)
+                                      .join(" · ") || "Premio por confirmar"
+                                  : "Premio"
+                              }: ${i < 3 ? ["Primer", "Segundo", "Tercer"][i] + " lugar" : "Participación"}${event.vip && event.framework && i < 3 ? " · Pase VIP / booth en " + event.frameworkName : ""}`
                             : "Pendiente de evaluación"}
                         </p>
                         <label>
@@ -1252,7 +1328,10 @@ function App() {
               </div>
             </>
           )}
-          {page === "Recordatorios" && (
+          {local && page === "Premios" && <PrizeBudget />}
+          {local && page === "Accesos del jurado" && <JudgeAccess />}
+          {local && page === "Recordatorios" && <OperationalReminders />}
+          {page === "Recordatorios" && !local && (
             <section className="panel settings-panel">
               <div className="section-heading">
                 <div>
@@ -1338,7 +1417,10 @@ function App() {
             </section>
           )}
           {page === "Participantes" && (cloud?.organizer || local) && (
-            <Participants />
+            <>
+              {local && <RegistrationSettings />}
+              <Participants />
+            </>
           )}
           {page === "Configuración" && (
             <section className="panel settings-panel">
@@ -1399,6 +1481,10 @@ function App() {
                               cloud?.snapshot.data["gj-participants"] ||
                               local?.data["gj-participants"] ||
                               [],
+                            prizes,
+                            reminders: local?.data["gj-reminders"] || [],
+                            answers: local?.jam.answers,
+                            edition: local?.jam.edition,
                             access: cloud?.members || [],
                           },
                           null,
@@ -1496,9 +1582,19 @@ function App() {
                   return;
                 }
                 setEvent({
+                  ...event,
+                  ...(local
+                    ? {
+                        edition: s("edition"),
+                        platform: s("platform"),
+                        planningStart: new Date(
+                          s("planningStart"),
+                        ).toISOString(),
+                      }
+                    : {}),
                   name: s("name"),
-                  start: s("start"),
-                  end: s("end"),
+                  start: new Date(s("start")).toISOString(),
+                  end: new Date(s("end")).toISOString(),
                   mode: s("mode"),
                   venue: s("venue"),
                   framework: s("framework") === "Sí",
@@ -1588,6 +1684,35 @@ function App() {
                   Nombre del evento
                   <input name="name" required defaultValue={event.name} />
                 </label>
+                {local && (
+                  <>
+                    <label>
+                      Edición
+                      <input
+                        name="edition"
+                        maxLength={60}
+                        defaultValue={local.jam.edition}
+                      />
+                    </label>
+                    <label>
+                      Inicio de planeación
+                      <input
+                        type="datetime-local"
+                        name="planningStart"
+                        required
+                        defaultValue={inputDate(
+                          event.planningStart ||
+                            local.jam.createdAt ||
+                            event.start,
+                        )}
+                      />
+                    </label>
+                    <label>
+                      Plataforma virtual
+                      <input name="platform" defaultValue={event.platform} />
+                    </label>
+                  </>
+                )}
                 <div className="form-grid">
                   <label>
                     Inicio
@@ -1595,7 +1720,7 @@ function App() {
                       type="datetime-local"
                       name="start"
                       required
-                      defaultValue={event.start}
+                      defaultValue={inputDate(event.start)}
                     />
                   </label>
                   <label>
@@ -1604,7 +1729,7 @@ function App() {
                       type="datetime-local"
                       name="end"
                       required
-                      defaultValue={event.end}
+                      defaultValue={inputDate(event.end)}
                     />
                   </label>
                 </div>

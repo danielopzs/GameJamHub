@@ -1,8 +1,16 @@
 import { STATIC_MODE } from "./runtime";
 import { useState } from "react";
 import { Bell, Check } from "lucide-react";
-export function PushControls({ notify }: { notify: (text: string) => void }) {
-  const [role, setRole] = useState("Todos");
+export function PushControls({
+  notify,
+  audience,
+  jamId,
+}: {
+  notify: (text: string) => void;
+  audience?: string;
+  jamId?: string;
+}) {
+  const [role, setRole] = useState(audience || "Organizadores");
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState(false);
   async function enable() {
@@ -35,7 +43,7 @@ export function PushControls({ notify }: { notify: (text: string) => void }) {
       const saved = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscription, role }),
+        body: JSON.stringify({ subscription, role, jamId }),
       });
       if (!saved.ok) throw Error("No se pudo registrar la suscripción push.");
       setActive(true);
@@ -54,7 +62,7 @@ export function PushControls({ notify }: { notify: (text: string) => void }) {
         const response = await fetch("/api/push/unsubscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: subscription.endpoint }),
+          body: JSON.stringify({ endpoint: subscription.endpoint, jamId }),
         });
         if (!response.ok) throw Error("No se pudo actualizar el servidor");
         await subscription.unsubscribe();
@@ -78,9 +86,16 @@ export function PushControls({ notify }: { notify: (text: string) => void }) {
     <div className="push-controls">
       <label>
         Recibir avisos para
-        <select value={role} onChange={(e) => setRole(e.target.value)}>
+        <select
+          disabled={!!audience}
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+        >
           {[
             "Todos",
+            "Organizadores",
+            "Jueces",
+            "Participantes",
             "General",
             "Logística",
             "Catering",

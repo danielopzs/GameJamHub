@@ -1,5 +1,11 @@
 export type JamAnswers = {
-  mode?: "Presencial" | "Virtual";
+  mode?: "Presencial" | "Virtual" | "Híbrido";
+  start?: string;
+  end?: string;
+  planningStart?: string;
+  student?: boolean;
+  studentName?: string;
+  crew?: { name: string; email: string; role: string; color: string }[];
   venue?: string;
   university?: boolean;
   universityRelation?: string;
@@ -19,10 +25,13 @@ export type Organizer = {
   name: string;
   username: string;
   email: string;
+  role?: "organizer" | "judge" | "participant" | "staff";
 };
 export type LocalJam = {
   id: string;
   name: string;
+  edition?: string;
+  createdAt?: string;
   onboarded: boolean;
   answers: JamAnswers;
   answersRevision: number;

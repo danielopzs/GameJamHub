@@ -7,15 +7,20 @@ import {
   MapPin,
   Monitor,
   Sparkles,
+  Plus,
+  Trash2,
 } from "lucide-react";
+import { roles } from "../data";
 import {
   localApi,
   type JamAnswers,
   type LocalJam,
   type Organizer,
 } from "./types";
+import { inputDate } from "./dates";
 type Field =
   | "mode"
+  | "dates"
   | "venue"
   | "university"
   | "framework"
@@ -24,126 +29,158 @@ type Field =
   | "infrastructure"
   | "partner"
   | "civil"
+  | "student"
   | "teamSize";
 export function Onboarding({
   jam,
   user,
   onDone,
   onExit,
+  editing = false,
 }: {
   jam: LocalJam;
   user: Organizer;
   onDone: () => Promise<void>;
   onExit: () => void;
+  editing?: boolean;
 }) {
   const draftKey = `gj-questionnaire:${user.id}:${jam.id}`;
   const [answers, setAnswers] = useState<JamAnswers>(() => {
+    let saved = { ...jam.answers };
     try {
-      return {
-        ...jam.answers,
+      saved = {
+        ...saved,
         ...JSON.parse(localStorage.getItem(draftKey) || "{}"),
       };
-    } catch {
-      return jam.answers;
-    }
+    } catch {}
+    return {
+      ...saved,
+      start: inputDate(saved.start || ""),
+      end: inputDate(saved.end || ""),
+      planningStart: inputDate(
+        saved.planningStart || jam.createdAt || new Date().toISOString(),
+      ),
+    };
   });
-  const [revision, setRevision] = useState(jam.answersRevision);
-  const [index, setIndex] = useState(0);
-  const [interlude, setInterlude] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(jam.answersRevision),
+    [index, setIndex] = useState(0),
+    [interlude, setInterlude] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [knownTeam, setKnownTeam] = useState(!!answers.crew?.length);
+  const physical = answers.mode !== "Virtual",
+    remote = answers.mode !== "Presencial";
   const steps: Field[] = [
     "mode",
-    ...(answers.mode === "Virtual"
-      ? (["framework", "platform", "participants", "infrastructure"] as Field[])
-      : ([
-          "venue",
-          "university",
-          "framework",
-          "participants",
-          "infrastructure",
-        ] as Field[])),
+    "dates",
+    ...(physical ? (["venue", "university"] as Field[]) : []),
+    "framework",
+    ...(remote ? (["platform"] as Field[]) : []),
+    "participants",
+    "infrastructure",
     "partner",
     "civil",
+    "student",
     "teamSize",
   ];
   const field = steps[index];
   const questions: Record<Field, string> = {
-    mode: "¿El evento será presencial o virtual?",
+    mode: "¿El evento será presencial, virtual o híbrido?",
+    dates: "¿Cuándo será el jam y cuándo empieza la planeación?",
     venue: "¿Dónde harás el game jam?",
     university: "¿Es una universidad?",
     framework: "¿El game jam se desarrolla en el marco de otro evento?",
     platform: "¿En qué plataforma lo harás?",
-    participants:
-      answers.mode === "Virtual"
-        ? "¿Cuántos participantes esperas?"
-        : "¿Cuántos participantes esperas recibir?",
+    participants: "¿Cuántos participantes esperas recibir?",
     infrastructure:
       answers.mode === "Virtual"
         ? `¿Ya tienes una infraestructura en ${answers.platform || "la plataforma"}?`
-        : `¿El espacio tiene la infraestructura para recibir a ${answers.participants || "esa cantidad de"} participantes?`,
+        : answers.mode === "Híbrido"
+          ? `¿La sede y ${answers.platform || "la plataforma"} están listas para ${answers.participants || "tus"} participantes?`
+          : `¿El espacio tiene la infraestructura para recibir a ${answers.participants || "esa cantidad de"} participantes?`,
     partner: "¿Tienes algún socio clave?",
     civil: "¿Te apoya algún grupo o sociedad civil?",
+    student: "¿Te apoya algún grupo o asociación estudiantil?",
     teamSize: "¿Qué tan grande es tu equipo?",
   };
   function update<K extends keyof JamAnswers>(key: K, value: JamAnswers[K]) {
     const next = { ...answers, [key]: value };
-    if (key === "mode") {
-      delete next.venue;
-      delete next.platform;
-      delete next.university;
-      delete next.universityRelation;
-      setIndex(0);
-    }
     setAnswers(next);
     localStorage.setItem(draftKey, JSON.stringify(next));
     setError("");
   }
   function valid() {
     if (field === "mode") return !!answers.mode;
-    if (["venue", "platform"].includes(field))
-      return !!String(answers[field as "venue" | "platform"] || "").trim();
-    if (["participants", "teamSize"].includes(field))
+    if (field === "dates")
       return (
-        Number.isInteger(answers[field as "participants" | "teamSize"]) &&
-        Number(answers[field as "participants" | "teamSize"]) > 0
+        Number.isFinite(Date.parse(answers.start || "")) &&
+        Date.parse(answers.end || "") > Date.parse(answers.start || "") &&
+        Date.parse(answers.planningStart || "") <=
+          Date.parse(answers.start || "")
+      );
+    if (field === "venue" || field === "platform")
+      return !!answers[field]?.trim();
+    if (field === "participants" || field === "teamSize")
+      return (
+        Number.isInteger(answers[field]) &&
+        Number(answers[field]) > 0 &&
+        (field !== "teamSize" ||
+          !knownTeam ||
+          (!!answers.crew?.length &&
+            answers.crew.length < Number(answers.teamSize) &&
+            answers.crew.every(
+              (m) => m.name.trim() && m.email.trim() && m.role,
+            )))
       );
     if (field === "university")
       return (
         typeof answers.university === "boolean" &&
         (!answers.university || !!answers.universityRelation)
       );
-    if (field === "framework")
-      return (
-        typeof answers.framework === "boolean" &&
-        (!answers.framework || !!answers.frameworkName?.trim())
-      );
-    if (field === "partner")
-      return (
-        typeof answers.partner === "boolean" &&
-        (!answers.partner || !!answers.partnerName?.trim())
-      );
-    if (field === "civil")
-      return (
-        typeof answers.civil === "boolean" &&
-        (!answers.civil || !!answers.civilName?.trim())
-      );
-    return typeof answers.infrastructure === "boolean";
+    if (field === "infrastructure")
+      return typeof answers.infrastructure === "boolean";
+    const detail = {
+      framework: "frameworkName",
+      partner: "partnerName",
+      civil: "civilName",
+      student: "studentName",
+    }[field] as "frameworkName" | "partnerName" | "civilName" | "studentName";
+    return (
+      typeof answers[field] === "boolean" &&
+      (!answers[field] || !!answers[detail]?.trim())
+    );
   }
   async function next() {
     if (!valid()) {
-      setError("Completa esta respuesta para continuar.");
+      setError(
+        field === "dates"
+          ? "Revisa las tres fechas: la planeación comienza antes del inicio y el fin debe ser posterior."
+          : field === "teamSize"
+            ? "Completa los perfiles y cuenta también al organizador en el tamaño del equipo."
+            : "Completa esta respuesta para continuar.",
+      );
       return;
     }
     setBusy(true);
     setError("");
     try {
       const complete = index === steps.length - 1;
+      const payload = {
+        ...answers,
+        crew: knownTeam ? answers.crew : [],
+        ...(answers.start && answers.end && answers.planningStart
+          ? {
+              start: new Date(answers.start).toISOString(),
+              end: new Date(answers.end).toISOString(),
+              planningStart: new Date(answers.planningStart).toISOString(),
+            }
+          : {}),
+      };
       const result = await localApi<{ jam: LocalJam }>(
         `jams/${jam.id}/onboarding`,
         {
           method: "PUT",
-          body: JSON.stringify({ answers, revision, complete }),
+          body: JSON.stringify({ answers: payload, revision, complete }),
         },
       );
       setRevision(result.jam.answersRevision);
@@ -153,7 +190,7 @@ export function Onboarding({
         return;
       }
       if (field === "infrastructure") setInterlude("almost");
-      else if (field === "civil") setInterlude("last");
+      else if (field === "student") setInterlude("last");
       else setIndex(index + 1);
     } catch (e) {
       setError((e as Error).message);
@@ -162,7 +199,12 @@ export function Onboarding({
     }
   }
   const booleanField = field as
-    "university" | "framework" | "infrastructure" | "partner" | "civil";
+    | "university"
+    | "framework"
+    | "infrastructure"
+    | "partner"
+    | "civil"
+    | "student";
   const detail =
     field === "framework"
       ? "frameworkName"
@@ -170,7 +212,9 @@ export function Onboarding({
         ? "partnerName"
         : field === "civil"
           ? "civilName"
-          : null;
+          : field === "student"
+            ? "studentName"
+            : null;
   return (
     <div className="jam-entry">
       <section className="jam-onboarding">
@@ -178,9 +222,11 @@ export function Onboarding({
           <span className="brand-icon">
             <Gamepad2 size={23} />
           </span>
-          <span>{jam.name}</span>
+          <span>
+            {jam.name} {jam.edition}
+          </span>
           <button className="text-button" onClick={onExit} disabled={busy}>
-            Salir
+            {editing ? "Volver al evento" : "Salir"}
           </button>
         </header>
         <div className="jam-progress-label">
@@ -210,8 +256,8 @@ export function Onboarding({
             </h1>
             <p>
               {interlude === "last"
-                ? "El tamaño de tu equipo nos ayudará a preparar la organización."
-                : "Nos quedan unas pocas preguntas para conocer a las personas que harán posible este jam."}
+                ? "Puedes agregar los perfiles de tu equipo y asignar tareas después."
+                : "Nos quedan unas pocas preguntas sobre las personas que harán posible este jam."}
             </p>
             <button
               className="button primary"
@@ -231,61 +277,76 @@ export function Onboarding({
               void next();
             }}
           >
-            <span className="eyebrow">
-              {index === 0
-                ? "PRIMERO, EL LUGAR"
-                : index < steps.length - 3
-                  ? "DISEÑEMOS TU EXPERIENCIA"
-                  : "LAS PERSONAS DETRÁS DEL JAM"}
-            </span>
-            <h1 id="jam-question-title">{questions[field]}</h1>
+            <span className="eyebrow">CONFIGUREMOS ESTA EDICIÓN</span>
+            <h1>{questions[field]}</h1>
             {field === "mode" ? (
               <div className="jam-mode-options">
-                {(["Presencial", "Virtual"] as const).map((mode) => (
+                {(["Presencial", "Virtual", "Híbrido"] as const).map((mode) => (
                   <button
-                    type="button"
                     key={mode}
-                    className={answers.mode === mode ? "selected" : ""}
+                    type="button"
                     aria-pressed={answers.mode === mode}
+                    className={answers.mode === mode ? "selected" : ""}
                     onClick={() => update("mode", mode)}
                   >
-                    {mode === "Presencial" ? (
-                      <MapPin size={26} />
+                    {mode === "Virtual" ? (
+                      <Monitor size={24} />
                     ) : (
-                      <Monitor size={26} />
+                      <MapPin size={24} />
                     )}
                     <strong>{mode}</strong>
                     <small>
                       {mode === "Presencial"
                         ? "Compartiremos un espacio"
-                        : "Conectaremos desde cualquier lugar"}
+                        : mode === "Virtual"
+                          ? "Conectaremos desde cualquier lugar"
+                          : "Sede y plataforma conectadas"}
                     </small>
                     {answers.mode === mode && <Check size={17} />}
                   </button>
                 ))}
               </div>
-            ) : ["venue", "platform"].includes(field) ? (
+            ) : field === "dates" ? (
+              <div className="wizard-dates">
+                {(
+                  [
+                    ["planningStart", "Inicio de planeación"],
+                    ["start", "Inicio del jam"],
+                    ["end", "Fin del jam"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label className="jam-answer-label" key={key}>
+                    {label}
+                    <input
+                      type="datetime-local"
+                      required
+                      value={answers[key] || ""}
+                      onChange={(e) => update(key, e.target.value)}
+                    />
+                  </label>
+                ))}
+                <p className="jam-question-hint">
+                  Usamos la hora local de este navegador. El inicio de
+                  planeación se propone a partir del registro en la plataforma;
+                  ajústalo si ya habías empezado. El cronograma se adapta al
+                  tiempo disponible.
+                </p>
+              </div>
+            ) : field === "venue" || field === "platform" ? (
               <label className="jam-answer-label">
                 {field === "venue"
                   ? "Nombre y ubicación de la sede"
                   : "Nombre de la plataforma"}
                 <input
-                  autoFocus
                   key={field}
+                  autoFocus
                   maxLength={250}
                   required
-                  value={String(answers[field as "venue" | "platform"] || "")}
-                  onChange={(e) =>
-                    update(field as "venue" | "platform", e.target.value)
-                  }
-                  placeholder={
-                    field === "venue"
-                      ? "Ej. Centro de Innovación, Monterrey"
-                      : "Ej. Discord, itch.io, Gather"
-                  }
+                  value={answers[field] || ""}
+                  onChange={(e) => update(field, e.target.value)}
                 />
               </label>
-            ) : ["participants", "teamSize"].includes(field) ? (
+            ) : field === "participants" || field === "teamSize" ? (
               <label className="jam-answer-label">
                 {field === "participants"
                   ? "Participantes esperados"
@@ -295,19 +356,18 @@ export function Onboarding({
                   autoFocus
                   type="number"
                   min={1}
-                  max={10000}
+                  max={field === "teamSize" ? 10 : 100}
                   step={1}
                   required
-                  value={answers[field as "participants" | "teamSize"] ?? ""}
+                  value={answers[field] ?? ""}
                   onChange={(e) =>
                     update(
-                      field as "participants" | "teamSize",
+                      field,
                       e.target.value === ""
                         ? undefined
                         : Number(e.target.value),
                     )
                   }
-                  placeholder="Escribe una cantidad"
                 />
               </label>
             ) : (
@@ -351,7 +411,9 @@ export function Onboarding({
                   ? "¿Cuál es el evento marco?"
                   : detail === "partnerName"
                     ? "¿Quién es tu socio clave?"
-                    : "¿Qué grupo o sociedad civil te apoya?"}
+                    : detail === "studentName"
+                      ? "¿Qué grupo o asociación estudiantil te apoya?"
+                      : "¿Qué grupo o sociedad civil te apoya?"}
                 <input
                   maxLength={250}
                   required
@@ -361,7 +423,7 @@ export function Onboarding({
               </label>
             )}
             {field === "participants" &&
-              answers.mode === "Presencial" &&
+              physical &&
               Number(answers.participants) > 90 && (
                 <p className="jam-advice">
                   Con más de 90 participantes, consulta con la sede si requiere
@@ -369,10 +431,121 @@ export function Onboarding({
                 </p>
               )}
             {field === "teamSize" && (
-              <p className="jam-question-hint">
-                Cuenta a las personas que organizan el evento, no a los
-                participantes. Podrás asignar sus roles después.
-              </p>
+              <div className="wizard-crew">
+                <p className="jam-question-hint">
+                  Inclúyete en el total. Estos perfiles se agregarán al comité;
+                  después podrás asignarles tareas. No son cuentas de acceso.
+                </p>
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={knownTeam}
+                    onChange={(e) => setKnownTeam(e.target.checked)}
+                  />
+                  Ya tengo definido a mi equipo
+                </label>
+                {knownTeam && (
+                  <>
+                    <p>
+                      El perfil de {user.name} ya está incluido como
+                      organizador.
+                    </p>
+                    {(answers.crew || []).map((member, i) => (
+                      <fieldset key={i}>
+                        <legend>Integrante {i + 1}</legend>
+                        <label>
+                          Nombre del integrante
+                          <input
+                            required
+                            value={member.name}
+                            onChange={(e) =>
+                              update(
+                                "crew",
+                                answers.crew!.map((m, j) =>
+                                  j === i ? { ...m, name: e.target.value } : m,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+                        <label>
+                          Correo del integrante
+                          <input
+                            required
+                            type="email"
+                            value={member.email}
+                            onChange={(e) =>
+                              update(
+                                "crew",
+                                answers.crew!.map((m, j) =>
+                                  j === i ? { ...m, email: e.target.value } : m,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+                        <label>
+                          Rol del integrante
+                          <select
+                            value={member.role}
+                            onChange={(e) =>
+                              update(
+                                "crew",
+                                answers.crew!.map((m, j) =>
+                                  j === i ? { ...m, role: e.target.value } : m,
+                                ),
+                              )
+                            }
+                          >
+                            {roles.map((role) => (
+                              <option key={role}>{role}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="text-button"
+                          aria-label={`Quitar integrante ${i + 1}`}
+                          onClick={() =>
+                            update(
+                              "crew",
+                              answers.crew!.filter((_, j) => j !== i),
+                            )
+                          }
+                        >
+                          <Trash2 size={14} />
+                          Quitar
+                        </button>
+                      </fieldset>
+                    ))}
+                    <button
+                      type="button"
+                      className="button secondary"
+                      disabled={
+                        (answers.crew?.length || 0) >=
+                        Math.min(
+                          9,
+                          Math.max(0, Number(answers.teamSize || 1) - 1),
+                        )
+                      }
+                      onClick={() =>
+                        update("crew", [
+                          ...(answers.crew || []),
+                          {
+                            name: "",
+                            email: "",
+                            role: roles[1],
+                            color: "blue",
+                          },
+                        ])
+                      }
+                    >
+                      <Plus size={15} />
+                      Agregar integrante
+                    </button>
+                  </>
+                )}
+              </div>
             )}
             {error && (
               <p className="cloud-error" role="alert">

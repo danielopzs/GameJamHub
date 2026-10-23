@@ -1,3 +1,4 @@
+import { taskTimestamp } from "../shared/planning.mjs";
 import { Check, MoreHorizontal } from "lucide-react";
 import { phases, type Task } from "./data";
 import { Avatar } from "./Avatar";
@@ -7,12 +8,16 @@ export function TaskTable({
   items,
   members,
   eventStart,
+  eventEnd,
+  planningStart,
   onUpdate,
   onEdit,
 }: {
   items: Task[];
   members: { name: string; color: string }[];
   eventStart: string;
+  eventEnd?: string;
+  planningStart?: string;
   onUpdate: (id: number, status: string) => void;
   onEdit: (id: number) => void;
 }) {
@@ -70,10 +75,27 @@ export function TaskTable({
                 </span>
               </td>
               <td className="muted">
-                {jamDate(taskDate(eventStart, t.day), {
-                  day: "2-digit",
-                  month: "short",
-                })}
+                {jamDate(
+                  planningStart || eventEnd
+                    ? Number.isFinite(
+                        taskTimestamp(
+                          { start: eventStart, end: eventEnd, planningStart },
+                          t,
+                        ),
+                      )
+                      ? new Date(
+                          taskTimestamp(
+                            { start: eventStart, end: eventEnd, planningStart },
+                            t,
+                          ),
+                        ).toISOString()
+                      : ""
+                    : taskDate(eventStart, t.day),
+                  {
+                    day: "2-digit",
+                    month: "short",
+                  },
+                )}
               </td>
               <td>
                 <select

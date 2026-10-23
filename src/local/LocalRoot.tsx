@@ -16,19 +16,29 @@ import {
   type LocalSnapshot,
 } from "./types";
 import { LocalProvider, useLocalEvent } from "./store";
+import { EventReview, hydratedJam } from "./EventReview";
+import { GuestPortal, PublicRegistration, TicketPortal } from "./GuestPortals";
 import { Onboarding } from "./Onboarding";
 import "./local.css";
+import "./operations.css";
 type Selection = {
   name: string;
+  edition?: string;
   exists: boolean;
   needsOwner?: boolean;
   id?: string;
 };
 export function LocalRoot({ children }: { children: ReactNode }) {
   const [name, setName] = useState("");
+  const [edition, setEdition] = useState("");
+  const [ticket, setTicket] = useState(
+    () => new URLSearchParams(location.hash.slice(1)).get("ticket") || "",
+  );
+  const registerId = new URLSearchParams(location.search).get("register");
+  const [editing, setEditing] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [screen, setScreen] = useState<
-    "search" | "credentials" | "onboarding" | "dashboard"
+    "search" | "credentials" | "onboarding" | "dashboard" | "review" | "portal"
   >("search");
   const [existingAccount, setExistingAccount] = useState(false);
   const [identity, setIdentity] = useState<{
@@ -39,6 +49,33 @@ export function LocalRoot({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   if (STATIC_MODE) return <>{children}</>;
+  if (ticket) return <TicketPortal token={ticket} />;
+  if (registerId)
+    return (
+      <PublicRegistration
+        id={registerId}
+        onTicket={(token) => {
+          location.hash = "ticket=" + token;
+          setTicket(token);
+        }}
+      />
+    );
+  if (screen === "portal" && identity)
+    return (
+      <GuestPortal jam={identity.jam} user={identity.user} onExit={logout} />
+    );
+  if (screen === "review" && snapshot)
+    return (
+      <EventReview
+        snapshot={snapshot}
+        onBack={() => setScreen("dashboard")}
+        onEdit={() => {
+          setEditing(true);
+          setIdentity({ user: snapshot.user, jam: hydratedJam(snapshot) });
+          setScreen("onboarding");
+        }}
+      />
+    );
   async function open() {
     if (!identity) return;
     const data = await localApi<LocalSnapshot>(`jams/${identity.jam.id}`);
@@ -52,6 +89,7 @@ export function LocalRoot({ children }: { children: ReactNode }) {
     setSnapshot(null);
     setSelection(null);
     setName("");
+    setEdition("");
     setError("");
     setScreen("search");
   }
@@ -61,9 +99,10 @@ export function LocalRoot({ children }: { children: ReactNode }) {
         key={snapshot.jam.id + snapshot.user.id}
         initial={snapshot}
         onLogout={logout}
-        onEdit={(jam) => {
-          setIdentity({ user: snapshot.user, jam });
-          setScreen("onboarding");
+        onEdit={(latest) => {
+          setSnapshot(latest);
+          setIdentity({ user: latest.user, jam: hydratedJam(latest) });
+          setScreen("review");
         }}
       >
         <LocalBar />
@@ -75,10 +114,12 @@ export function LocalRoot({ children }: { children: ReactNode }) {
       <Onboarding
         key={identity.jam.id}
         jam={identity.jam}
+        editing={editing}
         user={identity.user}
         onDone={open}
         onExit={() => {
-          void logout().catch((e) => setError(e.message));
+          if (editing) void open().catch((e) => setError(e.message));
+          else void logout().catch((e) => setError(e.message));
         }}
       />
     );
@@ -114,7 +155,7 @@ export function LocalRoot({ children }: { children: ReactNode }) {
                 try {
                   const result = await localApi<Selection>("lookup", {
                     method: "POST",
-                    body: JSON.stringify({ name }),
+                    body: JSON.stringify({ name, edition }),
                   });
                   setSelection(result);
                   setExistingAccount(false);
@@ -140,6 +181,21 @@ export function LocalRoot({ children }: { children: ReactNode }) {
                   autoComplete="off"
                 />
               </label>
+              <label>
+                Edición del jam
+                <input
+                  name="edition"
+                  value={edition}
+                  onChange={(e) => setEdition(e.target.value)}
+                  maxLength={60}
+                  placeholder="Ej. 2027 o Primavera 2027"
+                  autoComplete="off"
+                />
+              </label>
+              <small>
+                Ejemplo: nombre «Global Game Jam», edición «2027». Para eventos
+                anteriores sin edición, deja este campo vacío.
+              </small>
               {error && (
                 <p className="cloud-error" role="alert">
                   {error}
@@ -176,14 +232,14 @@ export function LocalRoot({ children }: { children: ReactNode }) {
             </span>
             <h1>
               {login
-                ? `Continuemos con ${selection?.name}`
-                : `Organicemos ${selection?.name}`}
+                ? `Continuemos con ${selection?.name} ${selection?.edition || ""}`
+                : `Organicemos ${selection?.name} ${selection?.edition || ""}`}
             </h1>
             <p>
               {selection?.needsOwner
                 ? "Encontramos datos de la versión anterior. Crea el primer acceso del organizador para conservarlos y completar la configuración."
                 : login
-                  ? "Ingresa las credenciales del organizador para abrir el evento."
+                  ? "Ingresa las credenciales del organizador o del jurado para abrir el evento."
                   : "Este jam aún no está registrado. Crea tu perfil de organizador para comenzar."}
             </p>
             <form
@@ -204,12 +260,18 @@ export function LocalRoot({ children }: { children: ReactNode }) {
                     body: JSON.stringify({
                       ...data,
                       jamName: selection?.name,
+                      edition: selection?.edition,
                       create:
                         existingAccount &&
                         (!selection?.exists || selection.needsOwner),
                     }),
                   });
                   setIdentity(result);
+                  if (result.user.role && result.user.role !== "organizer") {
+                    setScreen("portal");
+                    return;
+                  }
+                  setEditing(false);
                   if (result.jam.onboarded) {
                     const initial = await localApi<LocalSnapshot>(
                       `jams/${result.jam.id}`,
@@ -335,7 +397,7 @@ function LocalBar() {
       <div className="local-bar">
         <strong>
           <Gamepad2 size={16} />
-          {local.jam.name}
+          {local.jam.name} {local.jam.edition}
         </strong>
         <span className="local-sync">
           <CheckCircle2 size={14} />
@@ -355,7 +417,8 @@ function LocalBar() {
                 );
                 return;
               }
-              local.editSetup();
+              setError("");
+              void local.editSetup().catch((e) => setError(e.message));
             }}
           >
             <Settings size={15} />

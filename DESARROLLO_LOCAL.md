@@ -75,15 +75,42 @@ El primero debe responder `200 OK`; el segundo, `{"ok":true,"storage":"sqlite"}`
 
 ## 4. Probar el nuevo recorrido
 
-1. La primera pantalla pregunta **«¿En qué jam trabajaremos hoy?»**. Escribe un nombre. Mayúsculas y espacios repetidos no crean eventos distintos.
+1. La primera pantalla pregunta **«¿En qué jam trabajaremos hoy?»**. Escribe el nombre y la **edición** en campos separados: por ejemplo, `Global Game Jam` y `2027`. Mayúsculas y espacios repetidos no crean eventos distintos. Los eventos de versiones anteriores conservan su nombre y una edición vacía; búscalos así y después separa ambos campos desde Editar evento.
 2. Si no existe, registra nombre, usuario, correo y contraseña de al menos ocho caracteres o PIN numérico de seis a doce dígitos. **No hay cuentas ni contraseñas predeterminadas**. No se envía un correo de verificación.
 3. Si ya tienes cuenta y quieres crear otro jam, pulsa **«Ya tengo cuenta de organizador»**. Un organizador puede crear hasta seis eventos.
-4. Contesta el cuestionario: modalidad, sede o plataforma, evento marco, participantes, infraestructura, socios, apoyo civil y tamaño del equipo. En presencial se pregunta por la universidad y su relación. Cada respuesta se guarda al continuar, y puedes regresar.
-5. Al terminar aparecen los datos capturados y las próximas tareas. Las 31 tareas de un jam nuevo empiezan pendientes; no se copian participantes, equipos ni jueces de demostración. El tamaño indicado en el cuestionario es una previsión: agrega después las personas reales y sus roles en Comité organizador.
-6. Usa **«Agregar fechas»** para indicar inicio y fin. Hasta entonces las tareas se muestran por fase y prioridad, sin fechas inventadas. Con fechas, se calculan sus vencimientos respecto al inicio.
-7. Puedes revisar el cuestionario desde **«Respuestas del evento»**. Sal del jam y vuelve a buscar su nombre para comprobar el acceso por usuario o correo y contraseña/PIN. Si ya terminaste el cuestionario, pasarás directamente al dashboard.
+4. Contesta el cuestionario: modalidad **presencial, virtual o híbrida**; inicio y fin del jam; inicio de planeación; sede y/o plataforma; evento marco; participantes; infraestructura; socios; apoyo civil o estudiantil y equipo. El inicio de planeación se propone con la fecha de registro; puedes ajustarlo. Las horas son las de tu navegador y se guardan como instantes UTC. Cada respuesta se guarda al continuar.
+5. Al terminar aparecen los datos capturados y las próximas tareas. Las 31 tareas de un jam nuevo empiezan pendientes; no se copian participantes, equipos ni jueces de demostración. Si ya tienes comité, agrega sus perfiles (nombre, correo y rol) en la última pregunta. Puedes completarlos después en Comité organizador, hasta diez personas incluyendo al organizador.
+6. El cronograma se genera con esas fechas. En Tareas → Cronograma verás fechas reales, responsables, avance y tareas por fase; puedes desplegar o plegar cada fase. Si hay menos de 60 días disponibles, se comprimen los plazos previos. La entrega se recuerda dos horas antes del cierre real; el jueceo se sitúa al cierre y la retrospectiva después. Puedes cambiar fechas desde Editar evento.
+7. **«Respuestas del evento»** abre un resumen guardado con el botón Volver al dashboard. Para recorrer el cuestionario otra vez, pulsa Editar configuración. Sal del jam y vuelve a buscar su nombre y edición para comprobar el acceso. Si ya terminaste el cuestionario, pasarás directamente al dashboard.
 
-En el modo local, el organizador administra también las evaluaciones y selecciona al juez por su nombre. **No hay cuentas individuales de comité o jueces en esta variante**; los accesos individuales con permisos se conservan en la variante Supabase. No compartas la contraseña del organizador para simular esos permisos.
+## 5. Jurado y comité con cuentas propias
+
+1. Entra como organizador y abre **Accesos del jurado**. Esta sección administra también los accesos del comité.
+2. Escribe nombre, usuario, correo y contraseña inicial (o deja la contraseña vacía si el usuario y correo ya tienen cuenta). Selecciona el perfil **Jurado** o **Comité organizador** y pulsa Crear acceso. No se envía ninguna invitación por correo: comparte personalmente la URL accesible, el nombre del jam, su edición, el usuario y la contraseña inicial.
+3. Para el comité, el correo debe existir primero en los perfiles de Comité organizador. Un perfil del cuestionario es un registro de persona y rol; el acceso se concede explícitamente en esta sección. Esto evita crear o compartir contraseñas durante el cuestionario.
+4. El invitado abre la misma página de inicio, busca el mismo nombre y edición y usa su cuenta. Un juez ve equipos, enlaces de entrega, rúbrica y sus propios avisos; guarda únicamente sus evaluaciones (21 criterios, hasta 120 puntos). Otro juez tiene registros y revisiones independientes. El comité ve las tareas y puede distribuir responsables y cambiar estados; no modifica fechas, premios ni evaluaciones.
+5. Desde el dashboard del organizador, usa Evaluación y premios para registrar equipos, consultar el ranking y, si hace falta, capturar evaluaciones manuales. Los accesos individuales están limitados a cinco jueces y nueve integrantes además del organizador. Revocar un acceso invalida sus sesiones en esa edición y conserva las evaluaciones ya entregadas.
+6. Antes de evaluar, registra los juegos entregados en **Resumen → Registrar o corregir entrega de un juego**. El juez verá ese enlace. Esto también actualiza la métrica de entregas.
+
+El panel del juez advierte antes de abandonar una evaluación sin guardar. No tiene una cola de evaluaciones offline: guarda con conexión y comprueba el mensaje de confirmación. No compartas la cuenta del organizador.
+
+## 6. Inscripciones automáticas y check-in
+
+1. En Participantes, activa **Abrir inscripciones públicas**, ajusta el cupo (hasta 100) y espera a que el indicador confirme el guardado.
+2. Copia el Enlace de registro. Con la Raspberry en una red local, abre la app desde `http://IP_DE_TU_RASPBERRY:5174/` para obtener un enlace que puedan usar otros dispositivos de esa red. Un enlace generado con localhost apunta al dispositivo de quien lo abre. Para personas fuera de casa necesitas que el servidor esté disponible desde Internet, con HTTPS; Netlify por sí solo no aloja esta API local.
+3. El participante abre el enlace, escribe nombre, correo y, opcionalmente, el código de un equipo existente. Acepta compartir esos datos con el comité y confirma su inscripción. No crea una cuenta y no necesita verificar un correo.
+4. La app controla el cupo y evita correos duplicados en la misma edición. Al terminar muestra un código de entrada y un enlace personal. **El participante debe guardar ese enlace**: esta versión no envía emails automáticos. El enlace contiene un token privado y permite ver únicamente su propio comprobante y avisos.
+5. Los inscritos aparecen en Participantes sin capturarlos de nuevo. Busca por nombre, correo o código, asigna equipo si falta y marca **Confirmada** al llegar. El comprobante personal reflejará ese check-in al recargar (o en la siguiente actualización automática).
+6. Exportar participantes descarga un CSV con los registros. El botón Recuperar comprobante de cada fila genera un nuevo enlace personal, invalida el anterior y te permite compartirlo con la persona que lo perdió. Una inscripción eliminada deja de tener un comprobante válido.
+7. Puedes cerrar inscripciones sin eliminar a los registrados. Los comprobantes existentes siguen funcionando. Si bajas el cupo por debajo del total inscrito, la app deja de aceptar nuevas inscripciones; no elimina registros.
+
+Esto cubre inscripción, cupo, comprobantes y check-in para probar el flujo que hoy haces en Luma. No incluye cobros, envío de correo, lista de espera ni una publicación automática en Internet.
+
+## 7. Premios, recordatorios y métricas para patrocinadores
+
+- **Premios:** registra nombre, patrocinador, cantidad, valor unitario declarado en MXN, lugar y estado (Propuesto, Confirmado o Entregado). El panel suma el valor previsto, confirmado y entregado. Los premios confirmados con lugar se muestran junto al podio provisional; la entrega física se marca manualmente, no se presume por aparecer en el ranking. Los pases VIP/booths siguen configurándose en Editar evento; agrega también su valor estimado como premio si quieres incluirlo en el presupuesto.
+- **Recordatorios:** hay avisos automáticos y avisos que puedes programar por fecha para Organizadores, Jueces, Participantes o Todos. Rojo indica urgencia, verde acción requerida y azul información, siempre con texto. Los portales de invitados muestran su audiencia y los avisos generales. El banner del dashboard resalta los próximos avisos del organizador. Web Push requiere permiso, contexto seguro y el servidor funcionando; el color de las notificaciones del sistema depende del navegador.
+- **Pulso del evento:** muestra inscritos, check-ins, equipos, personas asignadas a equipos, juegos entregados y valor confirmado de premios. Se consulta al servidor cada cinco segundos con conexión. Marca las entregas con un enlace real; escribir solo el nombre de un juego al crear el equipo no equivale a una entrega. Exportar métricas genera un CSV agregado con nombre del evento, edición y fecha de corte para preparar un pitch de patrocinio sin exportar datos personales.
 
 ## Datos anteriores, sincronización y respaldos
 
@@ -109,4 +136,4 @@ npm run build
 
 La prueba de interfaz usa una base temporal y Chromium. Si no está instalado, ejecuta `npx playwright install chromium` en un equipo compatible, o instala Chromium del sistema en la Raspberry. No necesita Supabase ni modifica `.data/`. `npm run test:ui` verifica por separado la variante cloud con servicios simulados.
 
-`npm run build && npm start` sirve el modo local compilado en el puerto 3001. Para producción, establece `NODE_ENV=production` y una `APP_PASSWORD` adicional segura, usa HTTPS y un volumen persistente. El Dockerfile incluye esta variante. Netlify continúa usando `build:cloud`: **no aloja esta API SQLite**, por lo que los cambios locales no habilitan este recorrido en Netlify.
+`npm run build && npm start` sirve el modo local compilado en el puerto 3001. Para producción, establece `NODE_ENV=production` y una `APP_PASSWORD` adicional segura, usa HTTPS y un volumen persistente. Esa contraseña HTTP protege todo el sitio, incluyendo formularios de inscripción y portales de invitados; corresponde a un entorno privado. Las pruebas de inscripción compartida de esta guía usan el entorno de desarrollo en la red doméstica con `APP_PASSWORD` vacío. El Dockerfile incluye esta variante. Netlify continúa usando `build:cloud`: **no aloja esta API SQLite**, por lo que los cambios locales no habilitan este recorrido en Netlify.
